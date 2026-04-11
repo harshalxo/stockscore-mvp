@@ -349,50 +349,147 @@ export default function CompanyPage() {
 
           {/* Methodology Tab */}
           <TabsContent value="methodology">
-            <Card className="glass-card">
-              <CardHeader><CardTitle className="text-base">Scoring Methodology</CardTitle></CardHeader>
-              <CardContent className="space-y-6 text-sm text-muted-foreground leading-relaxed">
-                <div>
-                  <h4 className="font-semibold text-foreground mb-2">How StockScore Works</h4>
-                  <p>StockScore evaluates companies across five fundamental pillars, each weighted to produce a composite score from 0-100. The methodology combines quantitative financial metrics with relative sector comparisons.</p>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {[
-                    { title: 'Profitability (25%)', desc: 'Evaluates margins (gross, operating, net), return on equity, and cash flow generation relative to sector peers.' },
-                    { title: 'Growth (20%)', desc: 'Measures revenue growth, earnings growth, and forward estimates to assess trajectory and sustainability.' },
-                    { title: 'Financial Health (20%)', desc: 'Analyzes balance sheet strength including debt/equity ratio, current ratio, cash position, and coverage ratios.' },
-                    { title: 'Valuation (20%)', desc: 'Compares P/E, P/B, and other multiples against sector medians and historical ranges to assess fair value.' },
-                    { title: 'Momentum (15%)', desc: 'Tracks price trends, volume patterns, and institutional activity to gauge market sentiment and timing.' },
-                  ].map((m) => (
-                    <div key={m.title}>
-                      <h5 className="font-medium text-foreground mb-1">{m.title}</h5>
-                      <p>{m.desc}</p>
+            <div className="space-y-6">
+              <Card className="glass-card">
+                <CardHeader><CardTitle className="text-base">Scoring Methodology</CardTitle></CardHeader>
+                <CardContent className="space-y-6 text-sm text-muted-foreground leading-relaxed">
+                  <div>
+                    <h4 className="font-semibold text-foreground mb-2">How StockScore Works</h4>
+                    <p>StockScore evaluates companies across five fundamental pillars using real-time data from Yahoo Finance. Each pillar produces a sub-score from 0–100, then the overall score is calculated as a weighted sum:</p>
+                    <div className="mt-3 p-3 rounded-lg bg-secondary/50 font-mono text-xs">
+                      Overall = Σ (pillar_score × weight), clamped 0–100
                     </div>
-                  ))}
-                </div>
-                <div>
-                  <h4 className="font-semibold text-foreground mb-2">Grading Scale</h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    {[
-                      { range: '90-100', grade: 'A+/A', color: 'text-score-excellent' },
-                      { range: '75-89', grade: 'A-/B+', color: 'text-score-good' },
-                      { range: '60-74', grade: 'B/B-', color: 'text-score-good' },
-                      { range: '40-59', grade: 'C+/C', color: 'text-score-neutral' },
-                      { range: '0-39', grade: 'D/F', color: 'text-score-bad' },
-                    ].map((g) => (
-                      <div key={g.range} className="text-center p-3 rounded-lg bg-secondary/50">
-                        <p className={`font-bold font-mono ${g.color}`}>{g.grade}</p>
-                        <p className="text-xs text-muted-foreground">{g.range}</p>
-                      </div>
-                    ))}
                   </div>
-                </div>
-                <div>
-                  <h4 className="font-semibold text-foreground mb-2">Confidence Levels</h4>
-                  <p><strong className="text-foreground">High:</strong> Ample data, well-established company with consistent financials. <strong className="text-foreground">Medium:</strong> Some data limitations or unusual financial patterns. <strong className="text-foreground">Low:</strong> Limited data, recent IPO, or highly volatile metrics.</p>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {/* Exact formulas per pillar */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  {
+                    title: 'Profitability',
+                    weight: '25%',
+                    inputs: ['Gross Margin', 'Operating Margin', 'Net Margin', 'Return on Equity (ROE)'],
+                    formula: 'avg(\n  grossMargin × 120,\n  opMargin × 200,\n  netMargin × 250,\n  min(ROE × 200, 100)\n)',
+                    note: 'Higher margins and ROE yield higher scores. Each metric is scaled so that strong performers score 70–100.',
+                  },
+                  {
+                    title: 'Growth',
+                    weight: '20%',
+                    inputs: ['Revenue Growth (YoY)', 'Earnings Growth (YoY)'],
+                    formula: 'avg(\n  50 + revenueGrowth × 200,\n  50 + earningsGrowth × 150\n)',
+                    note: 'Baseline of 50 = flat growth. 25% revenue growth → score of 100. Negative growth penalizes below 50.',
+                  },
+                  {
+                    title: 'Financial Health',
+                    weight: '20%',
+                    inputs: ['Current Ratio', 'Debt-to-Equity', 'Cash / Debt Ratio'],
+                    formula: 'avg(\n  min(currentRatio × 40, 100),\n  max(100 − D/E × 30, 0),\n  min(cash/debt × 60, 100)\n)',
+                    note: 'Rewards liquidity and low leverage. A current ratio of 2.5+ and D/E below 1.0 score well.',
+                  },
+                  {
+                    title: 'Valuation',
+                    weight: '20%',
+                    inputs: ['P/E Ratio', 'P/B Ratio'],
+                    formula: 'avg(\n  max(100 − (PE − 15) × 2, 0),\n  max(100 − (PB − 3) × 8, 0)\n)',
+                    note: 'Anchored to P/E of 15 and P/B of 3 as "fair value". Lower multiples score higher; very high multiples approach 0.',
+                  },
+                  {
+                    title: 'Momentum',
+                    weight: '15%',
+                    inputs: ['Current Price', '52-Week High', '52-Week Low'],
+                    formula: '(price − 52wLow)\n  ÷ (52wHigh − 52wLow)\n  × 100',
+                    note: 'Measures where the stock trades within its 52-week range. Near highs → strong momentum.',
+                  },
+                ].map((p) => (
+                  <Card key={p.title} className="glass-card">
+                    <CardContent className="p-5 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-semibold text-foreground">{p.title}</h4>
+                        <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">
+                          {p.weight}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground/60 mb-1">Inputs</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {p.inputs.map((inp) => (
+                            <span key={inp} className="text-xs bg-secondary/70 text-muted-foreground px-2 py-0.5 rounded">
+                              {inp}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground/60 mb-1">Formula</p>
+                        <pre className="text-xs font-mono bg-secondary/50 rounded-lg p-3 whitespace-pre-wrap text-foreground/80 overflow-x-auto">
+                          {p.formula}
+                        </pre>
+                      </div>
+                      <p className="text-xs text-muted-foreground/70">{p.note}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Aggregation, Grading, Confidence */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="glass-card">
+                  <CardContent className="p-5 space-y-4">
+                    <h4 className="font-semibold text-foreground text-sm">Grading Scale</h4>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                      {[
+                        { range: '≥ 95', grade: 'A+', color: 'text-score-excellent' },
+                        { range: '≥ 90', grade: 'A', color: 'text-score-excellent' },
+                        { range: '≥ 85', grade: 'A-', color: 'text-score-good' },
+                        { range: '≥ 80', grade: 'B+', color: 'text-score-good' },
+                        { range: '≥ 75', grade: 'B', color: 'text-score-good' },
+                        { range: '≥ 70', grade: 'B-', color: 'text-score-good' },
+                        { range: '≥ 65', grade: 'C+', color: 'text-score-neutral' },
+                        { range: '≥ 60', grade: 'C', color: 'text-score-neutral' },
+                        { range: '≥ 55', grade: 'C-', color: 'text-score-neutral' },
+                        { range: '≥ 45', grade: 'D', color: 'text-score-poor' },
+                        { range: '< 45', grade: 'F', color: 'text-score-bad' },
+                      ].map((g) => (
+                        <div key={g.grade} className="flex items-center justify-between p-2 rounded bg-secondary/40">
+                          <span className={`font-bold font-mono text-sm ${g.color}`}>{g.grade}</span>
+                          <span className="text-xs text-muted-foreground font-mono">{g.range}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="glass-card">
+                  <CardContent className="p-5 space-y-4">
+                    <h4 className="font-semibold text-foreground text-sm">Confidence Levels</h4>
+                    <div className="space-y-3 text-sm text-muted-foreground">
+                      <div>
+                        <p className="text-xs text-muted-foreground/60 mb-1">Determination formula</p>
+                        <pre className="text-xs font-mono bg-secondary/50 rounded-lg p-3 whitespace-pre-wrap text-foreground/80">
+{`metrics = [PE, ROE, revGrowth, grossMargin]
+available = count(non-null metrics)
+
+if available ≥ 3 → "high"
+else if PE exists → "medium"
+else → "low"`}
+                        </pre>
+                      </div>
+                      <div className="space-y-2 text-xs">
+                        <p><span className="text-green-400 font-semibold">High:</span> ≥3 key metrics present — reliable composite score.</p>
+                        <p><span className="text-yellow-400 font-semibold">Medium:</span> P/E available but other data gaps — directional score.</p>
+                        <p><span className="text-red-400 font-semibold">Low:</span> Minimal data — score should be treated with caution.</p>
+                      </div>
+                    </div>
+
+                    <h4 className="font-semibold text-foreground text-sm pt-2">Missing Data Handling</h4>
+                    <p className="text-xs text-muted-foreground">
+                      When a metric is <code className="bg-secondary/50 px-1 rounded">null</code>, it is excluded from its pillar's average. If <em>all</em> inputs for a pillar are null, a default score of 50 is used. This prevents missing data from artificially inflating or deflating scores.
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
           </TabsContent>
         </Tabs>
 
