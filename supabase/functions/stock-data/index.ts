@@ -11,14 +11,63 @@ function json(data: unknown, status = 200) {
 }
 
 const YF_BASE = 'https://query2.finance.yahoo.com';
-const YF_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-  'Accept': 'application/json',
-};
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+let cachedCrumb: { crumb: string; cookie: string; ts: number } | null = null;
+
+async function getCrumb(): Promise<{ crumb: string; cookie: string }> {
+  if (cachedCrumb && Date.now() - cachedCrumb.ts < 5 * 60 * 1000) {
+    return cachedCrumb;
+  }
+
+  // Step 1: Get consent cookie from Yahoo
+  const consentRes = await fetch('https://fc.yahoo.com', {
+    headers: { 'User-Agent': UA },
+    redirect: 'manual',
+  });
+  await consentRes.text(); // consume body
+
+  const setCookies = consentRes.headers.get('set-cookie') || '';
+  // Extract all cookies
+  const cookies = setCookies.split(',').map(c => c.split(';')[0].trim()).filter(Boolean).join('; ');
+
+  // Step 2: Get crumb
+  const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
+    headers: { 'User-Agent': UA, 'Cookie': cookies },
+  });
+  const crumb = await crumbRes.text();
+
+  if (!crumb || crumb.includes('Unauthorized')) {
+    throw new Error('Failed to obtain Yahoo Finance crumb');
+  }
+
+  cachedCrumb = { crumb, cookie: cookies, ts: Date.now() };
+  return cachedCrumb;
+}
 
 async function yfFetch(path: string) {
-  const res = await fetch(`${YF_BASE}${path}`, { headers: YF_HEADERS });
+  const { crumb, cookie } = await getCrumb();
+  const separator = path.includes('?') ? '&' : '?';
+  const url = `${YF_BASE}${path}${separator}crumb=${encodeURIComponent(crumb)}`;
+  const res = await fetch(url, {
+    headers: { 'User-Agent': UA, 'Accept': 'application/json', 'Cookie': cookie },
+  });
   if (!res.ok) {
+    // If 401, invalidate crumb cache and retry once
+    if (res.status === 401 && cachedCrumb) {
+      await res.text();
+      cachedCrumb = null;
+      const fresh = await getCrumb();
+      const retryUrl = `${YF_BASE}${path}${separator}crumb=${encodeURIComponent(fresh.crumb)}`;
+      const retry = await fetch(retryUrl, {
+        headers: { 'User-Agent': UA, 'Accept': 'application/json', 'Cookie': fresh.cookie },
+      });
+      if (!retry.ok) {
+        const text = await retry.text();
+        throw new Error(`Yahoo Finance API error ${retry.status}: ${text.slice(0, 200)}`);
+      }
+      return retry.json();
+    }
     const text = await res.text();
     throw new Error(`Yahoo Finance API error ${res.status}: ${text.slice(0, 200)}`);
   }
