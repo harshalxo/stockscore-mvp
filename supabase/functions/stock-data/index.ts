@@ -1,4 +1,5 @@
-import yahooFinance from "npm:yahoo-finance2@2.14.0";
+import YahooFinance from "npm:yahoo-finance2@2.14.0";
+const yahooFinance = new YahooFinance();
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
