@@ -395,6 +395,61 @@ export default function CompanyPage() {
             </Card>
           </TabsContent>
         </Tabs>
+
+        {/* Data Attribution Footer */}
+        <motion.div
+          className="mt-10 border-t border-border/30 pt-6 pb-4 space-y-3"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.4 }}
+        >
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground/70">
+            <span className="flex items-center gap-1.5">
+              <Database className="h-3.5 w-3.5" />
+              Data provided by Yahoo Finance
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Clock className="h-3.5 w-3.5" />
+              Score updated {sc.lastUpdated ? new Date(sc.lastUpdated).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A'}
+            </span>
+            {overview.dataUpdatedAt && (
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                Profile fetched {new Date(overview.dataUpdatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            )}
+            {prices.dataUpdatedAt && (
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                Prices fetched {new Date(prices.dataUpdatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            )}
+          </div>
+
+          {/* Data coverage notes */}
+          <div className="flex items-start gap-2 text-xs text-muted-foreground/60 bg-secondary/30 rounded-lg px-3 py-2.5 max-w-3xl">
+            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+            <p>
+              {(() => {
+                const missing: string[] = [];
+                if (!fund) missing.push('fundamentals');
+                else {
+                  if (fund.peRatio == null && fund.pbRatio == null) missing.push('valuation ratios');
+                  if (fund.grossMargin == null && fund.netMargin == null) missing.push('margin data');
+                  if (fund.revenueGrowth == null && fund.earningsGrowth == null) missing.push('growth metrics');
+                  if (fund.currentRatio == null && fund.debtToEquity == null) missing.push('balance sheet ratios');
+                }
+                if (!pr) missing.push('price data');
+                else if (!pr.history || pr.history.length === 0) missing.push('price history');
+
+                if (missing.length === 0) {
+                  return 'Full data coverage — all key metrics available for this analysis. Scores are based on trailing twelve-month financials and real-time market data.';
+                }
+                return `Partial data coverage — missing ${missing.join(', ')}. Score confidence may be affected. Scores are based on available trailing twelve-month financials.`;
+              })()}
+            </p>
+          </div>
+        </motion.div>
       </main>
     </div>
   );
