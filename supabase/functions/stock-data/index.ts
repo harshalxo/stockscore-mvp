@@ -158,11 +158,12 @@ async function handleFundamentals(symbol: string) {
 // ── prices ──────────────────────────────────────────────────────────────
 async function handlePrices(symbol: string) {
   const [quoteData, chartData] = await Promise.all([
-    yfFetch(`/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=price`),
+    yfFetch(`/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=price,summaryDetail`),
     yfFetch(`/v8/finance/chart/${encodeURIComponent(symbol)}?range=1y&interval=1d`),
   ]);
 
   const price = quoteData.quoteSummary?.result?.[0]?.price || {};
+  const sd = quoteData.quoteSummary?.result?.[0]?.summaryDetail || {};
   const chart = chartData.chart?.result?.[0];
   if (!chart) return null;
 
@@ -185,10 +186,10 @@ async function handlePrices(symbol: string) {
     previousClose,
     change: Math.round((currentPrice - previousClose) * 100) / 100,
     changePercent: previousClose ? Math.round(((currentPrice - previousClose) / previousClose) * 10000) / 100 : 0,
-    high52Week: price.regularMarketDayHigh?.raw || 0, // will refine below
-    low52Week: price.regularMarketDayLow?.raw || 0,
+    high52Week: sd.fiftyTwoWeekHigh?.raw || 0,
+    low52Week: sd.fiftyTwoWeekLow?.raw || 0,
     volume: price.regularMarketVolume?.raw || 0,
-    avgVolume: price.averageDailyVolume3Month?.raw || 0,
+    avgVolume: sd.averageDailyVolume10Day?.raw || price.averageDailyVolume3Month?.raw || 0,
     history,
   };
 }
