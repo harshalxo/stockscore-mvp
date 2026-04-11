@@ -476,9 +476,9 @@ else → "low"`}
                         </pre>
                       </div>
                       <div className="space-y-2 text-xs">
-                        <p><span className="text-green-400 font-semibold">High:</span> ≥3 key metrics present — reliable composite score.</p>
-                        <p><span className="text-yellow-400 font-semibold">Medium:</span> P/E available but other data gaps — directional score.</p>
-                        <p><span className="text-red-400 font-semibold">Low:</span> Minimal data — score should be treated with caution.</p>
+                        <p><span className="text-score-excellent font-semibold">High:</span> ≥3 key metrics present — reliable composite score.</p>
+                        <p><span className="text-score-neutral font-semibold">Medium:</span> P/E available but other data gaps — directional score.</p>
+                        <p><span className="text-score-bad font-semibold">Low:</span> Minimal data — score should be treated with caution.</p>
                       </div>
                     </div>
 
