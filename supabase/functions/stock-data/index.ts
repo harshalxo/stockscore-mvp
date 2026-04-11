@@ -76,11 +76,15 @@ async function yfFetch(path: string) {
 
 // ── search ──────────────────────────────────────────────────────────────
 async function handleSearch(query: string) {
+  const { crumb, cookie } = await getCrumb();
   const res = await fetch(
-    `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=12&newsCount=0&enableFuzzyQuery=false&quotesQueryId=tss_match_phrase_query`,
-    { headers: YF_HEADERS },
+    `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=12&newsCount=0&enableFuzzyQuery=false&crumb=${encodeURIComponent(crumb)}`,
+    { headers: { 'User-Agent': UA, 'Cookie': cookie } },
   );
-  if (!res.ok) throw new Error('Search failed');
+  if (!res.ok) {
+    const t = await res.text();
+    throw new Error(`Search failed: ${t.slice(0, 200)}`);
+  }
   const data = await res.json();
   return (data.quotes || [])
     .filter((q: any) => q.quoteType === 'EQUITY' && q.symbol)
