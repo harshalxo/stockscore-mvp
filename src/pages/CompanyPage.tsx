@@ -198,18 +198,24 @@ export default function CompanyPage() {
               <Card className="glass-card">
                 <CardHeader><CardTitle className="text-base">Score Summary</CardTitle></CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">{sc.summary}</p>
-                  <div className="space-y-3">
-                    {sc.pillars.map((p) => (
-                      <div key={p.name} className="flex items-center gap-3">
-                        <span className="text-sm text-muted-foreground w-32">{p.name}</span>
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${getScoreColor(p.score).replace('text-', 'bg-')}`} style={{ width: `${p.score}%` }} />
-                        </div>
-                        <span className={`text-sm font-mono font-semibold w-8 text-right ${getScoreColor(p.score)}`}>{p.score}</span>
+                  {sc ? (
+                    <>
+                      <p className="text-sm text-muted-foreground leading-relaxed mb-4">{sc.summary}</p>
+                      <div className="space-y-3">
+                        {sc.pillars.map((p) => (
+                          <div key={p.name} className="flex items-center gap-3">
+                            <span className="text-sm text-muted-foreground w-32">{p.name}</span>
+                            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${getScoreColor(p.score).replace('text-', 'bg-')}`} style={{ width: `${p.score}%` }} />
+                            </div>
+                            <span className={`text-sm font-mono font-semibold w-8 text-right ${getScoreColor(p.score)}`}>{p.score}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Score not available for this symbol.</p>
+                  )}
                 </CardContent>
               </Card>
             </div>
