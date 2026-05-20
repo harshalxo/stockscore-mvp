@@ -122,11 +122,12 @@ export default function CompanyPage() {
             {/* Price */}
             {pr && (
               <div className="flex items-baseline gap-3 mb-4">
-                <span className="text-3xl font-bold font-mono text-foreground">${pr.currentPrice.toFixed(2)}</span>
+                <span className="text-3xl font-bold font-mono text-foreground">{cSym}{pr.currentPrice.toFixed(2)}</span>
                 <span className={`text-sm font-mono font-semibold flex items-center gap-1 ${pr.change >= 0 ? 'text-score-excellent' : 'text-score-bad'}`}>
                   {pr.change >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                   {pr.change >= 0 ? '+' : ''}{pr.change.toFixed(2)} ({pr.changePercent.toFixed(2)}%)
                 </span>
+                <span className="text-xs text-muted-foreground">{currency}</span>
               </div>
             )}
 
@@ -148,18 +149,27 @@ export default function CompanyPage() {
           </div>
 
           {/* Right - Score */}
-          <div className="flex flex-col items-center gap-3">
-            <ScoreGauge score={sc.overallScore} grade={sc.grade} />
-            <ConfidenceBadge confidence={sc.confidence} />
-          </div>
+          {sc ? (
+            <div className="flex flex-col items-center gap-3">
+              <ScoreGauge score={sc.overallScore} grade={sc.grade} />
+              <ConfidenceBadge confidence={sc.confidence} />
+            </div>
+          ) : score.isLoading ? (
+            <div className="h-40 w-40 shimmer rounded-full" />
+          ) : (
+            <div className="text-xs text-muted-foreground max-w-[180px] text-center">Score unavailable for this symbol.</div>
+          )}
         </motion.div>
 
         {/* Pillar Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-10">
-          {sc.pillars.map((p, i) => (
-            <PillarCard key={p.name} pillar={p} index={i} />
-          ))}
-        </div>
+        {sc && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-10">
+            {sc.pillars.map((p, i) => (
+              <PillarCard key={p.name} pillar={p} index={i} />
+            ))}
+          </div>
+        )}
+
 
         {/* Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
