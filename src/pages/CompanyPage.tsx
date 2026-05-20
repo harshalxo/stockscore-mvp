@@ -280,9 +280,9 @@ export default function CompanyPage() {
               <div className="space-y-6">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: 'Current', value: `$${pr.currentPrice.toFixed(2)}` },
-                    { label: '52W High', value: `$${pr.high52Week.toFixed(2)}` },
-                    { label: '52W Low', value: `$${pr.low52Week.toFixed(2)}` },
+                    { label: 'Current', value: `${cSym}${pr.currentPrice.toFixed(2)}` },
+                    { label: '52W High', value: `${cSym}${pr.high52Week.toFixed(2)}` },
+                    { label: '52W Low', value: `${cSym}${pr.low52Week.toFixed(2)}` },
                     { label: 'Volume', value: `${(pr.volume / 1e6).toFixed(1)}M` },
                   ].map((m) => (
                     <Card key={m.label} className="glass-card">
