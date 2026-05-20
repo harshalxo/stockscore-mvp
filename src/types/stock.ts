@@ -17,6 +17,7 @@ export interface CompanyOverview {
   website: string;
   ceo: string;
   country: string;
+  currency?: string;
   logo?: string;
 }
 
@@ -39,6 +40,7 @@ export interface Fundamentals {
   totalDebt: number | null;
   totalCash: number | null;
   beta: number | null;
+  currency?: string;
 }
 
 export interface PriceData {
@@ -51,6 +53,7 @@ export interface PriceData {
   low52Week: number;
   volume: number;
   avgVolume: number;
+  currency?: string;
   history: PricePoint[];
 }
 
