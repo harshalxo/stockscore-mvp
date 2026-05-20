@@ -11,16 +11,8 @@ import PillarCard from '@/components/PillarCard';
 import ErrorState from '@/components/ErrorState';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { useOverview, useFundamentals, usePrices, useScore } from '@/hooks/useStockData';
-import { getScoreColor } from '@/types/stock';
+import { getScoreColor, getCurrencySymbol, formatCurrency } from '@/types/stock';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-
-function formatNumber(n: number | null | undefined): string {
-  if (n == null) return 'N/A';
-  if (Math.abs(n) >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-  if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  return `$${n.toLocaleString()}`;
-}
 
 function formatPercent(n: number | null | undefined): string {
   if (n == null) return 'N/A';
