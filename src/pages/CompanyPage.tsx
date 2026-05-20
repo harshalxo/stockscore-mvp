@@ -61,7 +61,7 @@ export default function CompanyPage() {
   const fund = fundamentals.data;
   const pr = prices.data;
 
-  if (!co && !sc && !fund && !pr) {
+  if (!co) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <ErrorState message={`No data available for ${ticker}`} onRetry={() => navigate('/')} />
