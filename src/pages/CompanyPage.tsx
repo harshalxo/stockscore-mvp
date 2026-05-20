@@ -525,10 +525,12 @@ else → "low"`}
               <Database className="h-3.5 w-3.5" />
               Data provided by Yahoo Finance
             </span>
-            <span className="flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5" />
-              Score updated {sc.lastUpdated ? new Date(sc.lastUpdated).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A'}
-            </span>
+            {sc?.lastUpdated && (
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                Score updated {new Date(sc.lastUpdated).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            )}
             {overview.dataUpdatedAt && (
               <span className="flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5" />
