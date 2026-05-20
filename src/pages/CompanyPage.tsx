@@ -38,17 +38,19 @@ export default function CompanyPage() {
   const prices = usePrices(ticker);
   const score = useScore(ticker);
 
-  const isLoading = overview.isLoading || score.isLoading;
-  const hasError = overview.isError || score.isError;
+  const isLoading = overview.isLoading && score.isLoading && prices.isLoading;
+  // Only treat as fatal if every signal failed
+  const hasFatalError =
+    overview.isError && score.isError && fundamentals.isError && prices.isError;
 
   if (isLoading) return <PageSkeleton />;
 
-  if (hasError) {
+  if (hasFatalError) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <ErrorState
-          message={`Could not load data for ${ticker}. This company may not be available yet.`}
-          onRetry={() => { overview.refetch(); score.refetch(); }}
+          message={`Could not load data for ${ticker}. The symbol may be unsupported or Yahoo Finance is temporarily unavailable.`}
+          onRetry={() => { overview.refetch(); score.refetch(); fundamentals.refetch(); prices.refetch(); }}
         />
       </div>
     );
@@ -59,13 +61,19 @@ export default function CompanyPage() {
   const fund = fundamentals.data;
   const pr = prices.data;
 
-  if (!co || !sc) {
+  if (!co && !sc && !fund && !pr) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <ErrorState message={`No data available for ${ticker}`} onRetry={() => navigate('/')} />
       </div>
     );
   }
+
+  // Resolve currency from whichever source has it (priority: price > overview > fundamentals > score)
+  const currency = pr?.currency || co?.currency || fund?.currency || sc?.currency || 'USD';
+  const cSym = getCurrencySymbol(currency);
+  const fmtMoney = (n: number | null | undefined) => formatCurrency(n, currency);
+
 
   return (
     <div className="min-h-screen bg-background">
