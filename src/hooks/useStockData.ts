@@ -42,6 +42,8 @@ export function useScore(symbol: string) {
     queryKey: ['score', symbol],
     queryFn: () => stockApi.score(symbol),
     enabled: !!symbol,
-    staleTime: 5 * 60_000,
+    staleTime: 60_000,
+    refetchOnMount: 'always',
+    retry: 1,
   });
 }

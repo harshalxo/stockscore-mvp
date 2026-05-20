@@ -17,6 +17,7 @@ export interface CompanyOverview {
   website: string;
   ceo: string;
   country: string;
+  currency?: string;
   logo?: string;
 }
 
@@ -39,6 +40,7 @@ export interface Fundamentals {
   totalDebt: number | null;
   totalCash: number | null;
   beta: number | null;
+  currency?: string;
 }
 
 export interface PriceData {
@@ -51,6 +53,7 @@ export interface PriceData {
   low52Week: number;
   volume: number;
   avgVolume: number;
+  currency?: string;
   history: PricePoint[];
 }
 
@@ -75,7 +78,38 @@ export interface StockScore {
   confidence: 'high' | 'medium' | 'low';
   pillars: ScorePillar[];
   summary: string;
+  currency?: string;
   lastUpdated: string;
+}
+
+export function getCurrencySymbol(code?: string): string {
+  switch ((code || 'USD').toUpperCase()) {
+    case 'USD': return '$';
+    case 'INR': return '₹';
+    case 'EUR': return '€';
+    case 'GBP': return '£';
+    case 'GBp': return 'p';
+    case 'JPY': return '¥';
+    case 'CNY': case 'CNH': return '¥';
+    case 'HKD': return 'HK$';
+    case 'CAD': return 'C$';
+    case 'AUD': return 'A$';
+    case 'CHF': return 'CHF ';
+    case 'KRW': return '₩';
+    case 'SGD': return 'S$';
+    case 'BRL': return 'R$';
+    default: return `${code} `;
+  }
+}
+
+export function formatCurrency(n: number | null | undefined, code?: string): string {
+  if (n == null || !isFinite(n)) return 'N/A';
+  const sym = getCurrencySymbol(code);
+  const abs = Math.abs(n);
+  if (abs >= 1e12) return `${sym}${(n / 1e12).toFixed(2)}T`;
+  if (abs >= 1e9) return `${sym}${(n / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sym}${(n / 1e6).toFixed(2)}M`;
+  return `${sym}${n.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
 export type ScoreGrade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | 'C-' | 'D' | 'F';

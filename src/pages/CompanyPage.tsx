@@ -11,16 +11,8 @@ import PillarCard from '@/components/PillarCard';
 import ErrorState from '@/components/ErrorState';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import { useOverview, useFundamentals, usePrices, useScore } from '@/hooks/useStockData';
-import { getScoreColor } from '@/types/stock';
+import { getScoreColor, getCurrencySymbol, formatCurrency } from '@/types/stock';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
-
-function formatNumber(n: number | null | undefined): string {
-  if (n == null) return 'N/A';
-  if (Math.abs(n) >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-  if (Math.abs(n) >= 1e9) return `$${(n / 1e9).toFixed(2)}B`;
-  if (Math.abs(n) >= 1e6) return `$${(n / 1e6).toFixed(2)}M`;
-  return `$${n.toLocaleString()}`;
-}
 
 function formatPercent(n: number | null | undefined): string {
   if (n == null) return 'N/A';
@@ -46,17 +38,19 @@ export default function CompanyPage() {
   const prices = usePrices(ticker);
   const score = useScore(ticker);
 
-  const isLoading = overview.isLoading || score.isLoading;
-  const hasError = overview.isError || score.isError;
+  const isLoading = overview.isLoading && score.isLoading && prices.isLoading;
+  // Only treat as fatal if every signal failed
+  const hasFatalError =
+    overview.isError && score.isError && fundamentals.isError && prices.isError;
 
   if (isLoading) return <PageSkeleton />;
 
-  if (hasError) {
+  if (hasFatalError) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <ErrorState
-          message={`Could not load data for ${ticker}. This company may not be available yet.`}
-          onRetry={() => { overview.refetch(); score.refetch(); }}
+          message={`Could not load data for ${ticker}. The symbol may be unsupported or Yahoo Finance is temporarily unavailable.`}
+          onRetry={() => { overview.refetch(); score.refetch(); fundamentals.refetch(); prices.refetch(); }}
         />
       </div>
     );
@@ -67,13 +61,19 @@ export default function CompanyPage() {
   const fund = fundamentals.data;
   const pr = prices.data;
 
-  if (!co || !sc) {
+  if (!co) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <ErrorState message={`No data available for ${ticker}`} onRetry={() => navigate('/')} />
       </div>
     );
   }
+
+  // Resolve currency from whichever source has it (priority: price > overview > fundamentals > score)
+  const currency = pr?.currency || co?.currency || fund?.currency || sc?.currency || 'USD';
+  const cSym = getCurrencySymbol(currency);
+  const fmtMoney = (n: number | null | undefined) => formatCurrency(n, currency);
+
 
   return (
     <div className="min-h-screen bg-background">
@@ -122,11 +122,12 @@ export default function CompanyPage() {
             {/* Price */}
             {pr && (
               <div className="flex items-baseline gap-3 mb-4">
-                <span className="text-3xl font-bold font-mono text-foreground">${pr.currentPrice.toFixed(2)}</span>
+                <span className="text-3xl font-bold font-mono text-foreground">{cSym}{pr.currentPrice.toFixed(2)}</span>
                 <span className={`text-sm font-mono font-semibold flex items-center gap-1 ${pr.change >= 0 ? 'text-score-excellent' : 'text-score-bad'}`}>
                   {pr.change >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                   {pr.change >= 0 ? '+' : ''}{pr.change.toFixed(2)} ({pr.changePercent.toFixed(2)}%)
                 </span>
+                <span className="text-xs text-muted-foreground">{currency}</span>
               </div>
             )}
 
@@ -134,7 +135,7 @@ export default function CompanyPage() {
 
             <div className="flex flex-wrap gap-4 mt-4 text-xs text-muted-foreground">
               {co.marketCap > 0 && (
-                <span className="flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5" /> {formatNumber(co.marketCap)}</span>
+                <span className="flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5" /> {fmtMoney(co.marketCap)}</span>
               )}
               {co.employees > 0 && (
                 <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> {co.employees.toLocaleString()} employees</span>
@@ -148,18 +149,27 @@ export default function CompanyPage() {
           </div>
 
           {/* Right - Score */}
-          <div className="flex flex-col items-center gap-3">
-            <ScoreGauge score={sc.overallScore} grade={sc.grade} />
-            <ConfidenceBadge confidence={sc.confidence} />
-          </div>
+          {sc ? (
+            <div className="flex flex-col items-center gap-3">
+              <ScoreGauge score={sc.overallScore} grade={sc.grade} />
+              <ConfidenceBadge confidence={sc.confidence} />
+            </div>
+          ) : score.isLoading ? (
+            <div className="h-40 w-40 shimmer rounded-full" />
+          ) : (
+            <div className="text-xs text-muted-foreground max-w-[180px] text-center">Score unavailable for this symbol.</div>
+          )}
         </motion.div>
 
         {/* Pillar Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-10">
-          {sc.pillars.map((p, i) => (
-            <PillarCard key={p.name} pillar={p} index={i} />
-          ))}
-        </div>
+        {sc && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 mb-10">
+            {sc.pillars.map((p, i) => (
+              <PillarCard key={p.name} pillar={p} index={i} />
+            ))}
+          </div>
+        )}
+
 
         {/* Tabs */}
         <Tabs defaultValue="overview" className="space-y-6">
@@ -188,18 +198,24 @@ export default function CompanyPage() {
               <Card className="glass-card">
                 <CardHeader><CardTitle className="text-base">Score Summary</CardTitle></CardHeader>
                 <CardContent>
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">{sc.summary}</p>
-                  <div className="space-y-3">
-                    {sc.pillars.map((p) => (
-                      <div key={p.name} className="flex items-center gap-3">
-                        <span className="text-sm text-muted-foreground w-32">{p.name}</span>
-                        <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full ${getScoreColor(p.score).replace('text-', 'bg-')}`} style={{ width: `${p.score}%` }} />
-                        </div>
-                        <span className={`text-sm font-mono font-semibold w-8 text-right ${getScoreColor(p.score)}`}>{p.score}</span>
+                  {sc ? (
+                    <>
+                      <p className="text-sm text-muted-foreground leading-relaxed mb-4">{sc.summary}</p>
+                      <div className="space-y-3">
+                        {sc.pillars.map((p) => (
+                          <div key={p.name} className="flex items-center gap-3">
+                            <span className="text-sm text-muted-foreground w-32">{p.name}</span>
+                            <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
+                              <div className={`h-full rounded-full ${getScoreColor(p.score).replace('text-', 'bg-')}`} style={{ width: `${p.score}%` }} />
+                            </div>
+                            <span className={`text-sm font-mono font-semibold w-8 text-right ${getScoreColor(p.score)}`}>{p.score}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">Score not available for this symbol.</p>
+                  )}
                 </CardContent>
               </Card>
             </div>
@@ -222,7 +238,7 @@ export default function CompanyPage() {
                   <CardContent>
                     <MetricRow label="P/E Ratio" value={fund.peRatio?.toFixed(1) || 'N/A'} />
                     <MetricRow label="P/B Ratio" value={fund.pbRatio?.toFixed(1) || 'N/A'} />
-                    <MetricRow label="Market Cap" value={formatNumber(co.marketCap)} />
+                    <MetricRow label="Market Cap" value={fmtMoney(co.marketCap)} />
                     <MetricRow label="Beta" value={fund.beta?.toFixed(2) || 'N/A'} />
                     <MetricRow label="Dividend Yield" value={formatPercent(fund.dividendYield)} />
                   </CardContent>
@@ -234,8 +250,8 @@ export default function CompanyPage() {
                     <MetricRow label="Operating Margin" value={formatPercent(fund.operatingMargin)} />
                     <MetricRow label="Net Margin" value={formatPercent(fund.netMargin)} />
                     <MetricRow label="ROE" value={formatPercent(fund.roe)} />
-                    <MetricRow label="Revenue" value={formatNumber(fund.revenue)} />
-                    <MetricRow label="Net Income" value={formatNumber(fund.netIncome)} />
+                    <MetricRow label="Revenue" value={fmtMoney(fund.revenue)} />
+                    <MetricRow label="Net Income" value={fmtMoney(fund.netIncome)} />
                   </CardContent>
                 </Card>
                 <Card className="glass-card">
@@ -243,9 +259,9 @@ export default function CompanyPage() {
                   <CardContent>
                     <MetricRow label="Debt/Equity" value={fund.debtToEquity?.toFixed(2) || 'N/A'} />
                     <MetricRow label="Current Ratio" value={fund.currentRatio?.toFixed(2) || 'N/A'} />
-                    <MetricRow label="Total Debt" value={formatNumber(fund.totalDebt)} />
-                    <MetricRow label="Total Cash" value={formatNumber(fund.totalCash)} />
-                    <MetricRow label="Free Cash Flow" value={formatNumber(fund.freeCashFlow)} />
+                    <MetricRow label="Total Debt" value={fmtMoney(fund.totalDebt)} />
+                    <MetricRow label="Total Cash" value={fmtMoney(fund.totalCash)} />
+                    <MetricRow label="Free Cash Flow" value={fmtMoney(fund.freeCashFlow)} />
                     <MetricRow label="Revenue Growth" value={formatPercent(fund.revenueGrowth)} />
                     <MetricRow label="Earnings Growth" value={formatPercent(fund.earningsGrowth)} />
                   </CardContent>
@@ -264,9 +280,9 @@ export default function CompanyPage() {
               <div className="space-y-6">
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   {[
-                    { label: 'Current', value: `$${pr.currentPrice.toFixed(2)}` },
-                    { label: '52W High', value: `$${pr.high52Week.toFixed(2)}` },
-                    { label: '52W Low', value: `$${pr.low52Week.toFixed(2)}` },
+                    { label: 'Current', value: `${cSym}${pr.currentPrice.toFixed(2)}` },
+                    { label: '52W High', value: `${cSym}${pr.high52Week.toFixed(2)}` },
+                    { label: '52W Low', value: `${cSym}${pr.low52Week.toFixed(2)}` },
                     { label: 'Volume', value: `${(pr.volume / 1e6).toFixed(1)}M` },
                   ].map((m) => (
                     <Card key={m.label} className="glass-card">
@@ -291,7 +307,7 @@ export default function CompanyPage() {
                               </linearGradient>
                             </defs>
                             <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'hsl(215, 15%, 50%)' }} tickLine={false} axisLine={false} tickFormatter={(v) => v.slice(5)} interval={Math.floor(pr.history.length / 6)} />
-                            <YAxis tick={{ fontSize: 11, fill: 'hsl(215, 15%, 50%)' }} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(v) => `$${v}`} />
+                            <YAxis tick={{ fontSize: 11, fill: 'hsl(215, 15%, 50%)' }} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(v) => `${cSym}${v}`} />
                             <Tooltip
                               contentStyle={{ background: 'hsl(220, 22%, 10%)', border: '1px solid hsl(220, 18%, 18%)', borderRadius: '8px', fontSize: '12px' }}
                               labelStyle={{ color: 'hsl(210, 20%, 92%)' }}
@@ -312,39 +328,43 @@ export default function CompanyPage() {
 
           {/* Score Breakdown Tab */}
           <TabsContent value="breakdown">
-            <div className="space-y-6">
-              <Card className="glass-card">
-                <CardHeader><CardTitle className="text-base">Overall Analysis</CardTitle></CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{sc.summary}</p>
-                </CardContent>
-              </Card>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {sc.pillars.map((p, i) => (
-                  <Card key={p.name} className="glass-card">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-semibold text-foreground">{p.name}</h4>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-2xl font-bold font-mono ${getScoreColor(p.score)}`}>{p.score}</span>
-                          <span className={`text-sm font-semibold ${getScoreColor(p.score)}`}>{p.grade}</span>
+            {sc ? (
+              <div className="space-y-6">
+                <Card className="glass-card">
+                  <CardHeader><CardTitle className="text-base">Overall Analysis</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{sc.summary}</p>
+                  </CardContent>
+                </Card>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {sc.pillars.map((p, i) => (
+                    <Card key={p.name} className="glass-card">
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-semibold text-foreground">{p.name}</h4>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-2xl font-bold font-mono ${getScoreColor(p.score)}`}>{p.score}</span>
+                            <span className={`text-sm font-semibold ${getScoreColor(p.score)}`}>{p.grade}</span>
+                          </div>
                         </div>
-                      </div>
-                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-4">
-                        <motion.div
-                          className={`h-full rounded-full ${getScoreColor(p.score).replace('text-', 'bg-')}`}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${p.score}%` }}
-                          transition={{ duration: 0.8, ease: 'easeOut' }}
-                        />
-                      </div>
-                      <p className="text-sm text-muted-foreground leading-relaxed">{p.details}</p>
-                      <p className="text-xs text-muted-foreground/60 mt-2">Weight: {(p.weight * 100).toFixed(0)}% of overall score</p>
-                    </CardContent>
-                  </Card>
-                ))}
+                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-4">
+                          <motion.div
+                            className={`h-full rounded-full ${getScoreColor(p.score).replace('text-', 'bg-')}`}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${p.score}%` }}
+                            transition={{ duration: 0.8, ease: 'easeOut' }}
+                          />
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{p.details}</p>
+                        <p className="text-xs text-muted-foreground/60 mt-2">Weight: {(p.weight * 100).toFixed(0)}% of overall score</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <ErrorState message="Score breakdown not available for this symbol." />
+            )}
           </TabsContent>
 
           {/* Methodology Tab */}
@@ -505,10 +525,12 @@ else → "low"`}
               <Database className="h-3.5 w-3.5" />
               Data provided by Yahoo Finance
             </span>
-            <span className="flex items-center gap-1.5">
-              <Clock className="h-3.5 w-3.5" />
-              Score updated {sc.lastUpdated ? new Date(sc.lastUpdated).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A'}
-            </span>
+            {sc?.lastUpdated && (
+              <span className="flex items-center gap-1.5">
+                <Clock className="h-3.5 w-3.5" />
+                Score updated {new Date(sc.lastUpdated).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+              </span>
+            )}
             {overview.dataUpdatedAt && (
               <span className="flex items-center gap-1.5">
                 <Clock className="h-3.5 w-3.5" />
