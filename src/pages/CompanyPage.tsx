@@ -307,7 +307,7 @@ export default function CompanyPage() {
                               </linearGradient>
                             </defs>
                             <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'hsl(215, 15%, 50%)' }} tickLine={false} axisLine={false} tickFormatter={(v) => v.slice(5)} interval={Math.floor(pr.history.length / 6)} />
-                            <YAxis tick={{ fontSize: 11, fill: 'hsl(215, 15%, 50%)' }} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(v) => `$${v}`} />
+                            <YAxis tick={{ fontSize: 11, fill: 'hsl(215, 15%, 50%)' }} tickLine={false} axisLine={false} domain={['auto', 'auto']} tickFormatter={(v) => `${cSym}${v}`} />
                             <Tooltip
                               contentStyle={{ background: 'hsl(220, 22%, 10%)', border: '1px solid hsl(220, 18%, 18%)', borderRadius: '8px', fontSize: '12px' }}
                               labelStyle={{ color: 'hsl(210, 20%, 92%)' }}
