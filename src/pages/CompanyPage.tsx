@@ -328,39 +328,43 @@ export default function CompanyPage() {
 
           {/* Score Breakdown Tab */}
           <TabsContent value="breakdown">
-            <div className="space-y-6">
-              <Card className="glass-card">
-                <CardHeader><CardTitle className="text-base">Overall Analysis</CardTitle></CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground leading-relaxed">{sc.summary}</p>
-                </CardContent>
-              </Card>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {sc.pillars.map((p, i) => (
-                  <Card key={p.name} className="glass-card">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between mb-4">
-                        <h4 className="font-semibold text-foreground">{p.name}</h4>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-2xl font-bold font-mono ${getScoreColor(p.score)}`}>{p.score}</span>
-                          <span className={`text-sm font-semibold ${getScoreColor(p.score)}`}>{p.grade}</span>
+            {sc ? (
+              <div className="space-y-6">
+                <Card className="glass-card">
+                  <CardHeader><CardTitle className="text-base">Overall Analysis</CardTitle></CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{sc.summary}</p>
+                  </CardContent>
+                </Card>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {sc.pillars.map((p, i) => (
+                    <Card key={p.name} className="glass-card">
+                      <CardContent className="p-6">
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="font-semibold text-foreground">{p.name}</h4>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-2xl font-bold font-mono ${getScoreColor(p.score)}`}>{p.score}</span>
+                            <span className={`text-sm font-semibold ${getScoreColor(p.score)}`}>{p.grade}</span>
+                          </div>
                         </div>
-                      </div>
-                      <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-4">
-                        <motion.div
-                          className={`h-full rounded-full ${getScoreColor(p.score).replace('text-', 'bg-')}`}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${p.score}%` }}
-                          transition={{ duration: 0.8, ease: 'easeOut' }}
-                        />
-                      </div>
-                      <p className="text-sm text-muted-foreground leading-relaxed">{p.details}</p>
-                      <p className="text-xs text-muted-foreground/60 mt-2">Weight: {(p.weight * 100).toFixed(0)}% of overall score</p>
-                    </CardContent>
-                  </Card>
-                ))}
+                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden mb-4">
+                          <motion.div
+                            className={`h-full rounded-full ${getScoreColor(p.score).replace('text-', 'bg-')}`}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${p.score}%` }}
+                            transition={{ duration: 0.8, ease: 'easeOut' }}
+                          />
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed">{p.details}</p>
+                        <p className="text-xs text-muted-foreground/60 mt-2">Weight: {(p.weight * 100).toFixed(0)}% of overall score</p>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
               </div>
-            </div>
+            ) : (
+              <ErrorState message="Score breakdown not available for this symbol." />
+            )}
           </TabsContent>
 
           {/* Methodology Tab */}
