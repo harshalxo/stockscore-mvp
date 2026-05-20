@@ -134,7 +134,7 @@ export default function CompanyPage() {
 
             <div className="flex flex-wrap gap-4 mt-4 text-xs text-muted-foreground">
               {co.marketCap > 0 && (
-                <span className="flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5" /> {formatNumber(co.marketCap)}</span>
+                <span className="flex items-center gap-1.5"><DollarSign className="h-3.5 w-3.5" /> {fmtMoney(co.marketCap)}</span>
               )}
               {co.employees > 0 && (
                 <span className="flex items-center gap-1.5"><Users className="h-3.5 w-3.5" /> {co.employees.toLocaleString()} employees</span>
@@ -222,7 +222,7 @@ export default function CompanyPage() {
                   <CardContent>
                     <MetricRow label="P/E Ratio" value={fund.peRatio?.toFixed(1) || 'N/A'} />
                     <MetricRow label="P/B Ratio" value={fund.pbRatio?.toFixed(1) || 'N/A'} />
-                    <MetricRow label="Market Cap" value={formatNumber(co.marketCap)} />
+                    <MetricRow label="Market Cap" value={fmtMoney(co.marketCap)} />
                     <MetricRow label="Beta" value={fund.beta?.toFixed(2) || 'N/A'} />
                     <MetricRow label="Dividend Yield" value={formatPercent(fund.dividendYield)} />
                   </CardContent>
@@ -234,8 +234,8 @@ export default function CompanyPage() {
                     <MetricRow label="Operating Margin" value={formatPercent(fund.operatingMargin)} />
                     <MetricRow label="Net Margin" value={formatPercent(fund.netMargin)} />
                     <MetricRow label="ROE" value={formatPercent(fund.roe)} />
-                    <MetricRow label="Revenue" value={formatNumber(fund.revenue)} />
-                    <MetricRow label="Net Income" value={formatNumber(fund.netIncome)} />
+                    <MetricRow label="Revenue" value={fmtMoney(fund.revenue)} />
+                    <MetricRow label="Net Income" value={fmtMoney(fund.netIncome)} />
                   </CardContent>
                 </Card>
                 <Card className="glass-card">
@@ -243,9 +243,9 @@ export default function CompanyPage() {
                   <CardContent>
                     <MetricRow label="Debt/Equity" value={fund.debtToEquity?.toFixed(2) || 'N/A'} />
                     <MetricRow label="Current Ratio" value={fund.currentRatio?.toFixed(2) || 'N/A'} />
-                    <MetricRow label="Total Debt" value={formatNumber(fund.totalDebt)} />
-                    <MetricRow label="Total Cash" value={formatNumber(fund.totalCash)} />
-                    <MetricRow label="Free Cash Flow" value={formatNumber(fund.freeCashFlow)} />
+                    <MetricRow label="Total Debt" value={fmtMoney(fund.totalDebt)} />
+                    <MetricRow label="Total Cash" value={fmtMoney(fund.totalCash)} />
+                    <MetricRow label="Free Cash Flow" value={fmtMoney(fund.freeCashFlow)} />
                     <MetricRow label="Revenue Growth" value={formatPercent(fund.revenueGrowth)} />
                     <MetricRow label="Earnings Growth" value={formatPercent(fund.earningsGrowth)} />
                   </CardContent>
