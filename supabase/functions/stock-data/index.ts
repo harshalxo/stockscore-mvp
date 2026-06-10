@@ -1,13 +1,17 @@
-// stock-data edge function — real Yahoo Finance data via yahoo-finance2
-// Frontend never calls Yahoo directly. All response shapes are backward-compatible
-// supersets of what the UI already consumes.
+// stock-data edge function — Yahoo Finance via yahoo-finance2.
+// Frontend never calls Yahoo directly. Response shapes are backward-compatible
+// supersets of what the existing UI consumes.
+//
+// NOTE: yahoo-finance2's built-in crumb fetcher fails from Supabase edge IPs
+// (Yahoo returns 200 instead of redirecting to guce.yahoo.com). We pre-warm a
+// crumb + cookie pair via fc.yahoo.com and inject it into yahoo-finance2 with
+// `setGlobalConfig({ cookieJar, _crumb })` so every call authenticates.
 import yahooFinance from 'npm:yahoo-finance2@2.13.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -15,28 +19,85 @@ function json(data: unknown, status = 200) {
   });
 }
 
-// Silence yahoo-finance2 survey/notice noise and schema-validation warnings.
+// ── yahoo-finance2 global config ────────────────────────────────────────
 try {
-  // @ts-ignore - runtime API exists
+  // @ts-ignore - runtime API
   yahooFinance.suppressNotices?.(['yahooSurvey', 'ripHistorical']);
   // @ts-ignore
   yahooFinance.setGlobalConfig?.({ validation: { logErrors: false, logOptionsErrors: false } });
 } catch (_) { /* no-op */ }
 
-async function safe<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
-  try {
-    return await fn();
-  } catch (e) {
-    console.warn(`[stock-data] ${label} failed: ${(e as Error).message}`);
-    return null;
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+// ── manual crumb (works around yahoo-finance2's broken consent flow) ───
+let creds: { crumb: string; cookie: string; ts: number } | null = null;
+async function getCreds(): Promise<{ crumb: string; cookie: string }> {
+  if (creds && Date.now() - creds.ts < 5 * 60 * 1000) return creds;
+  const consent = await fetch('https://fc.yahoo.com', { headers: { 'User-Agent': UA }, redirect: 'manual' });
+  await consent.text();
+  const cookie = (consent.headers.get('set-cookie') || '')
+    .split(',').map(c => c.split(';')[0].trim()).filter(Boolean).join('; ');
+  const r = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
+    headers: { 'User-Agent': UA, 'Cookie': cookie },
+  });
+  const crumb = (await r.text()).trim();
+  if (!crumb || crumb.includes('Unauthorized') || crumb.length > 32) {
+    throw new Error(`Failed to obtain Yahoo crumb (got: ${crumb.slice(0, 60)})`);
   }
+  creds = { crumb, cookie, ts: Date.now() };
+  return creds;
 }
 
-// ── search ──────────────────────────────────────────────────────────────
+// Low-level authenticated fetch against Yahoo (used as our hybrid client).
+async function yf<T = any>(path: string): Promise<T> {
+  const { crumb, cookie } = await getCreds();
+  const sep = path.includes('?') ? '&' : '?';
+  const url = `https://query2.finance.yahoo.com${path}${sep}crumb=${encodeURIComponent(crumb)}`;
+  let res = await fetch(url, { headers: { 'User-Agent': UA, 'Cookie': cookie, 'Accept': 'application/json' } });
+  if (res.status === 401 || res.status === 403) {
+    creds = null;
+    const fresh = await getCreds();
+    res = await fetch(`https://query2.finance.yahoo.com${path}${sep}crumb=${encodeURIComponent(fresh.crumb)}`,
+      { headers: { 'User-Agent': UA, 'Cookie': fresh.cookie, 'Accept': 'application/json' } });
+  }
+  if (!res.ok) throw new Error(`Yahoo ${res.status}: ${(await res.text()).slice(0, 120)}`);
+  return res.json();
+}
+
+async function safe<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
+  try { return await fn(); }
+  catch (e) { console.warn(`[stock-data] ${label}: ${(e as Error).message}`); return null; }
+}
+
+// ── thin wrappers that match yahoo-finance2's response shapes ──────────
+const raw = (o: any) => (o && typeof o === 'object' && 'raw' in o ? o.raw : o);
+async function quoteSummary(symbol: string, modules: string[]) {
+  const data = await yf(`/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=${modules.join(',')}`);
+  return data?.quoteSummary?.result?.[0] ?? {};
+}
+async function quote(symbol: string) {
+  const data = await yf(`/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`);
+  return data?.quoteResponse?.result?.[0] ?? null;
+}
+
+// ── search (uses yahoo-finance2 directly) ──────────────────────────────
 async function handleSearch(query: string) {
   if (!query) return [];
-  const res = await yahooFinance.search(query, { quotesCount: 12, newsCount: 0 });
-  return (res.quotes || [])
+  let quotes: any[] = [];
+  try {
+    const res = await yahooFinance.search(query, { quotesCount: 12, newsCount: 0 });
+    quotes = res.quotes || [];
+  } catch (e) {
+    console.warn(`[stock-data] yahoo.search fallback: ${(e as Error).message}`);
+    const { crumb, cookie } = await getCreds();
+    const r = await fetch(
+      `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(query)}&quotesCount=12&newsCount=0&crumb=${encodeURIComponent(crumb)}`,
+      { headers: { 'User-Agent': UA, 'Cookie': cookie } },
+    );
+    const j = await r.json();
+    quotes = j.quotes || [];
+  }
+  return quotes
     .filter((q: any) => q.symbol && (q.quoteType === 'EQUITY' || q.isYahooFinance))
     .map((q: any) => ({
       symbol: q.symbol,
@@ -50,94 +111,73 @@ async function handleSearch(query: string) {
 
 // ── overview ────────────────────────────────────────────────────────────
 async function handleOverview(symbol: string) {
-  const [quote, summary] = await Promise.all([
-    safe('quote', () => yahooFinance.quote(symbol)),
-    safe('quoteSummary(overview)', () =>
-      yahooFinance.quoteSummary(symbol, {
-        modules: ['assetProfile', 'price', 'summaryDetail', 'financialData'],
-      })
-    ),
+  const [q, s] = await Promise.all([
+    safe('quote', () => quote(symbol)),
+    safe('quoteSummary(overview)', () => quoteSummary(symbol, ['assetProfile', 'price', 'summaryDetail', 'financialData'])),
   ]);
+  if (!q && !s) return null;
 
-  if (!quote && !summary) return null;
-
-  const profile: any = summary?.assetProfile ?? {};
-  const price: any = summary?.price ?? {};
-  const sd: any = summary?.summaryDetail ?? {};
-  const fd: any = summary?.financialData ?? {};
-  const q: any = quote ?? {};
+  const profile: any = s?.assetProfile ?? {};
+  const price: any = s?.price ?? {};
+  const sd: any = s?.summaryDetail ?? {};
+  const fd: any = s?.financialData ?? {};
+  const Q: any = q ?? {};
 
   return {
     symbol,
-    name: q.longName || q.shortName || price.longName || price.shortName || symbol,
-    exchange: q.fullExchangeName || price.exchangeName || q.exchange || '',
-    market: q.market || '',
+    name: Q.longName || Q.shortName || price.longName || price.shortName || symbol,
+    exchange: Q.fullExchangeName || price.exchangeName || Q.exchange || '',
+    market: Q.market || '',
     sector: profile.sector || '',
     industry: profile.industry || '',
     description: profile.longBusinessSummary || '',
     businessSummary: profile.longBusinessSummary || '',
-    marketCap: q.marketCap ?? price.marketCap ?? 0,
+    marketCap: Q.marketCap ?? raw(price.marketCap) ?? 0,
     employees: profile.fullTimeEmployees || 0,
     website: profile.website || '',
     ceo: profile.companyOfficers?.[0]?.name || 'N/A',
     country: profile.country || '',
-    currency: q.currency || price.currency || 'USD',
-    currentPrice: q.regularMarketPrice ?? price.regularMarketPrice ?? fd.currentPrice ?? null,
-    trailingPE: q.trailingPE ?? sd.trailingPE ?? null,
-    priceToBook: q.priceToBook ?? sd.priceToBook ?? null,
-    sharesOutstanding: q.sharesOutstanding ?? null,
+    currency: Q.currency || price.currency || 'USD',
+    currentPrice: Q.regularMarketPrice ?? raw(price.regularMarketPrice) ?? raw(fd.currentPrice) ?? null,
+    trailingPE: Q.trailingPE ?? raw(sd.trailingPE) ?? null,
+    priceToBook: Q.priceToBook ?? raw(sd.priceToBook) ?? null,
+    sharesOutstanding: Q.sharesOutstanding ?? null,
     logo: '',
     fetchedAt: new Date().toISOString(),
   };
 }
 
-// ── fundamentals (real time-series) ─────────────────────────────────────
-const TS_KEYS = [
-  'annualTotalRevenue',
-  'annualEBIT',
-  'annualNetIncome',
-  'annualTotalAssets',
-  'annualStockholdersEquity',
-  'annualTotalDebt',
-  'annualCashAndCashEquivalents',
-  'annualOperatingCashFlow',
-  'annualCapitalExpenditure',
-  'annualFreeCashFlow',
-  'annualInterestExpense',
+// ── fundamentals (annual time series via timeseries endpoint) ──────────
+const TS_FIELDS = [
+  'annualTotalRevenue', 'annualEBIT', 'annualNetIncome',
+  'annualTotalAssets', 'annualStockholdersEquity', 'annualTotalDebt',
+  'annualCashAndCashEquivalents', 'annualOperatingCashFlow',
+  'annualCapitalExpenditure', 'annualFreeCashFlow', 'annualInterestExpense',
 ];
 
-function pickYear(d: Date | string): number {
-  const dt = typeof d === 'string' ? new Date(d) : d;
-  return dt.getUTCFullYear();
-}
-
 async function fetchAnnualSeries(symbol: string) {
-  const period2 = new Date();
-  const period1 = new Date();
-  period1.setFullYear(period1.getFullYear() - 5);
-  const rows = await safe('fundamentalsTimeSeries', () =>
-    // @ts-ignore - module exists at runtime
-    yahooFinance.fundamentalsTimeSeries(symbol, {
-      period1,
-      period2,
-      type: 'annual',
-      module: 'all',
-    })
-  );
-  if (!Array.isArray(rows) || !rows.length) return [];
+  const period2 = Math.floor(Date.now() / 1000);
+  const period1 = period2 - 5 * 365 * 86400;
+  const types = TS_FIELDS.join(',');
+  const path = `/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}?symbol=${encodeURIComponent(symbol)}&type=${types}&period1=${period1}&period2=${period2}&corsDomain=finance.yahoo.com`;
+  const data = await safe('fundamentalsTimeSeries', () => yf(path));
+  if (!data?.timeseries?.result) return [];
 
-  // Group by year, then map to normalized shape
   const byYear = new Map<number, any>();
-  for (const row of rows as any[]) {
-    const y = pickYear(row.date);
-    if (!byYear.has(y)) byYear.set(y, { year: y });
-    const entry = byYear.get(y);
-    for (const k of TS_KEYS) {
-      if (row[k] != null && entry[k] == null) entry[k] = row[k];
+  for (const series of data.timeseries.result as any[]) {
+    const key = TS_FIELDS.find((f) => series[f]);
+    if (!key) continue;
+    for (const row of series[key] as any[]) {
+      if (!row?.asOfDate) continue;
+      const y = new Date(row.asOfDate).getUTCFullYear();
+      if (!byYear.has(y)) byYear.set(y, { year: y });
+      const entry = byYear.get(y);
+      const value = raw(row.reportedValue);
+      if (value != null && entry[key] == null) entry[key] = value;
     }
   }
 
-  const years = Array.from(byYear.values())
+  return Array.from(byYear.values())
     .sort((a, b) => b.year - a.year)
     .slice(0, 3)
     .map((e) => ({
@@ -151,58 +191,47 @@ async function fetchAnnualSeries(symbol: string) {
       cashAndEquiv: e.annualCashAndCashEquivalents ?? null,
       operatingCf: e.annualOperatingCashFlow ?? null,
       capex: e.annualCapitalExpenditure ?? null,
-      freeCf:
-        e.annualFreeCashFlow ??
-        (e.annualOperatingCashFlow != null && e.annualCapitalExpenditure != null
-          ? e.annualOperatingCashFlow + e.annualCapitalExpenditure // capex is negative
-          : null),
+      freeCf: e.annualFreeCashFlow
+        ?? (e.annualOperatingCashFlow != null && e.annualCapitalExpenditure != null
+          ? e.annualOperatingCashFlow + e.annualCapitalExpenditure : null),
       interestExpense: e.annualInterestExpense ?? null,
     }));
-
-  return years;
 }
 
 async function handleFundamentals(symbol: string) {
-  const [summary, annual] = await Promise.all([
-    safe('quoteSummary(fund)', () =>
-      yahooFinance.quoteSummary(symbol, {
-        modules: ['defaultKeyStatistics', 'financialData', 'summaryDetail', 'price'],
-      })
-    ),
+  const [s, annual] = await Promise.all([
+    safe('quoteSummary(fund)', () => quoteSummary(symbol, ['defaultKeyStatistics', 'financialData', 'summaryDetail', 'price'])),
     fetchAnnualSeries(symbol),
   ]);
 
-  const ks: any = summary?.defaultKeyStatistics ?? {};
-  const fd: any = summary?.financialData ?? {};
-  const sd: any = summary?.summaryDetail ?? {};
-  const price: any = summary?.price ?? {};
+  if (!s && (!annual || !annual.length)) return null;
 
-  if (!summary && (!annual || !annual.length)) return null;
-
+  const ks: any = s?.defaultKeyStatistics ?? {};
+  const fd: any = s?.financialData ?? {};
+  const sd: any = s?.summaryDetail ?? {};
+  const price: any = s?.price ?? {};
   const latest = annual?.[0] ?? null;
 
   return {
     symbol,
-    // Legacy flat fields the UI already renders ──────────────────────────
-    peRatio: sd.trailingPE ?? ks.trailingPE ?? null,
-    pbRatio: ks.priceToBook ?? sd.priceToBook ?? null,
-    debtToEquity: fd.debtToEquity != null ? fd.debtToEquity / 100 : null,
-    currentRatio: fd.currentRatio ?? null,
-    roe: fd.returnOnEquity ?? null,
-    revenueGrowth: fd.revenueGrowth ?? null,
-    earningsGrowth: fd.earningsGrowth ?? null,
-    dividendYield: sd.dividendYield ?? null,
-    grossMargin: fd.grossMargins ?? null,
-    operatingMargin: fd.operatingMargins ?? null,
-    netMargin: fd.profitMargins ?? null,
-    freeCashFlow: latest?.freeCf ?? fd.freeCashflow ?? null,
-    revenue: latest?.revenue ?? fd.totalRevenue ?? null,
+    peRatio: raw(sd.trailingPE) ?? raw(ks.trailingPE) ?? null,
+    pbRatio: raw(ks.priceToBook) ?? raw(sd.priceToBook) ?? null,
+    debtToEquity: raw(fd.debtToEquity) != null ? raw(fd.debtToEquity) / 100 : null,
+    currentRatio: raw(fd.currentRatio) ?? null,
+    roe: raw(fd.returnOnEquity) ?? null,
+    revenueGrowth: raw(fd.revenueGrowth) ?? null,
+    earningsGrowth: raw(fd.earningsGrowth) ?? null,
+    dividendYield: raw(sd.dividendYield) ?? null,
+    grossMargin: raw(fd.grossMargins) ?? null,
+    operatingMargin: raw(fd.operatingMargins) ?? null,
+    netMargin: raw(fd.profitMargins) ?? null,
+    freeCashFlow: latest?.freeCf ?? raw(fd.freeCashflow) ?? null,
+    revenue: latest?.revenue ?? raw(fd.totalRevenue) ?? null,
     netIncome: latest?.netIncome ?? null,
-    totalDebt: latest?.totalDebt ?? fd.totalDebt ?? null,
-    totalCash: latest?.cashAndEquiv ?? fd.totalCash ?? null,
-    beta: ks.beta ?? null,
+    totalDebt: latest?.totalDebt ?? raw(fd.totalDebt) ?? null,
+    totalCash: latest?.cashAndEquiv ?? raw(fd.totalCash) ?? null,
+    beta: raw(ks.beta) ?? null,
     currency: price.currency || sd.currency || 'USD',
-    // New: normalized 3-year annual time series ─────────────────────────
     annual,
     fetchedAt: new Date().toISOString(),
   };
@@ -210,39 +239,33 @@ async function handleFundamentals(symbol: string) {
 
 // ── prices ──────────────────────────────────────────────────────────────
 async function handlePrices(symbol: string) {
-  const period2 = new Date();
-  const period1 = new Date();
-  period1.setFullYear(period1.getFullYear() - 1);
+  const period2 = Math.floor(Date.now() / 1000);
+  const period1 = period2 - 365 * 86400;
 
-  const [hist, quote, summary] = await Promise.all([
-    safe('historical', () =>
-      // @ts-ignore - chart() is preferred internally; historical still works
-      yahooFinance.historical(symbol, { period1, period2, interval: '1d' })
-    ),
-    safe('quote(prices)', () => yahooFinance.quote(symbol)),
-    safe('quoteSummary(prices)', () =>
-      yahooFinance.quoteSummary(symbol, { modules: ['price', 'summaryDetail'] })
-    ),
+  const [chart, q, s] = await Promise.all([
+    safe('chart', () => yf(`/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${period1}&period2=${period2}&interval=1d`)),
+    safe('quote(prices)', () => quote(symbol)),
+    safe('quoteSummary(prices)', () => quoteSummary(symbol, ['price', 'summaryDetail'])),
   ]);
 
-  const q: any = quote ?? {};
-  const price: any = summary?.price ?? {};
-  const sd: any = summary?.summaryDetail ?? {};
+  const Q: any = q ?? {};
+  const price: any = s?.price ?? {};
+  const sd: any = s?.summaryDetail ?? {};
+  const r: any = chart?.chart?.result?.[0];
+  const quoteArr = r?.indicators?.quote?.[0] ?? {};
+  const ts: number[] = r?.timestamp ?? [];
 
-  const history = (hist || [])
-    .filter((p: any) => p && p.close != null)
-    .map((p: any) => ({
-      date: new Date(p.date).toISOString().split('T')[0],
-      open: p.open ?? null,
-      high: p.high ?? null,
-      low: p.low ?? null,
-      close: Math.round(p.close * 100) / 100,
-      volume: p.volume ?? 0,
-    }));
+  const history = ts.map((t, i) => ({
+    date: new Date(t * 1000).toISOString().split('T')[0],
+    open: quoteArr.open?.[i] ?? null,
+    high: quoteArr.high?.[i] ?? null,
+    low: quoteArr.low?.[i] ?? null,
+    close: quoteArr.close?.[i] != null ? Math.round(quoteArr.close[i] * 100) / 100 : 0,
+    volume: quoteArr.volume?.[i] ?? 0,
+  })).filter((p) => p.close > 0);
 
-  const currentPrice = q.regularMarketPrice ?? price.regularMarketPrice ?? 0;
-  const previousClose = q.regularMarketPreviousClose ?? price.regularMarketPreviousClose ?? 0;
-
+  const currentPrice = Q.regularMarketPrice ?? raw(price.regularMarketPrice) ?? r?.meta?.regularMarketPrice ?? 0;
+  const previousClose = Q.regularMarketPreviousClose ?? raw(price.regularMarketPreviousClose) ?? r?.meta?.chartPreviousClose ?? 0;
   if (!currentPrice && !previousClose && !history.length) return null;
 
   return {
@@ -250,14 +273,12 @@ async function handlePrices(symbol: string) {
     currentPrice,
     previousClose,
     change: Math.round((currentPrice - previousClose) * 100) / 100,
-    changePercent: previousClose
-      ? Math.round(((currentPrice - previousClose) / previousClose) * 10000) / 100
-      : 0,
-    high52Week: q.fiftyTwoWeekHigh ?? sd.fiftyTwoWeekHigh ?? 0,
-    low52Week: q.fiftyTwoWeekLow ?? sd.fiftyTwoWeekLow ?? 0,
-    volume: q.regularMarketVolume ?? 0,
-    avgVolume: q.averageDailyVolume10Day ?? sd.averageDailyVolume10Day ?? 0,
-    currency: q.currency || price.currency || 'USD',
+    changePercent: previousClose ? Math.round(((currentPrice - previousClose) / previousClose) * 10000) / 100 : 0,
+    high52Week: Q.fiftyTwoWeekHigh ?? raw(sd.fiftyTwoWeekHigh) ?? r?.meta?.fiftyTwoWeekHigh ?? 0,
+    low52Week: Q.fiftyTwoWeekLow ?? raw(sd.fiftyTwoWeekLow) ?? r?.meta?.fiftyTwoWeekLow ?? 0,
+    volume: Q.regularMarketVolume ?? 0,
+    avgVolume: Q.averageDailyVolume10Day ?? raw(sd.averageDailyVolume10Day) ?? 0,
+    currency: Q.currency || price.currency || r?.meta?.currency || 'USD',
     history,
     fetchedAt: new Date().toISOString(),
   };
@@ -278,24 +299,22 @@ function toGrade(s: number) {
 function fmtPct(v: number | null) { return v != null ? `${Math.round(v * 100)}%` : 'N/A'; }
 
 async function handleScore(symbol: string) {
-  const [fund, summary] = await Promise.all([
+  const [fund, s, q] = await Promise.all([
     handleFundamentals(symbol).catch(() => null),
-    safe('quoteSummary(score)', () =>
-      yahooFinance.quoteSummary(symbol, { modules: ['price', 'summaryDetail'] })
-    ),
+    safe('quoteSummary(score)', () => quoteSummary(symbol, ['price', 'summaryDetail'])),
+    safe('quote(score)', () => quote(symbol)),
   ]);
-  const quote = await safe('quote(score)', () => yahooFinance.quote(symbol));
 
-  const price: any = summary?.price ?? {};
-  const sd: any = summary?.summaryDetail ?? {};
-  const q: any = quote ?? {};
-
+  const price: any = s?.price ?? {};
+  const sd: any = s?.summaryDetail ?? {};
+  const Q: any = q ?? {};
   const f: any = fund || {};
-  const currentPrice = q.regularMarketPrice ?? price.regularMarketPrice ?? 0;
-  const high52 = q.fiftyTwoWeekHigh ?? sd.fiftyTwoWeekHigh ?? currentPrice;
-  const low52 = q.fiftyTwoWeekLow ?? sd.fiftyTwoWeekLow ?? currentPrice;
-  const shortName = q.longName || q.shortName || price.shortName || symbol;
-  const currency = q.currency || price.currency || f.currency || 'USD';
+
+  const currentPrice = Q.regularMarketPrice ?? raw(price.regularMarketPrice) ?? 0;
+  const high52 = Q.fiftyTwoWeekHigh ?? raw(sd.fiftyTwoWeekHigh) ?? currentPrice;
+  const low52 = Q.fiftyTwoWeekLow ?? raw(sd.fiftyTwoWeekLow) ?? currentPrice;
+  const shortName = Q.longName || Q.shortName || price.shortName || symbol;
+  const currency = Q.currency || price.currency || f.currency || 'USD';
 
   const m = {
     grossMargin: f.grossMargin != null ? f.grossMargin * 120 : null,
@@ -306,9 +325,8 @@ async function handleScore(symbol: string) {
     earningsGrowth: f.earningsGrowth != null ? 50 + f.earningsGrowth * 150 : null,
     currentRatio: f.currentRatio != null ? Math.min(f.currentRatio * 40, 100) : null,
     debtToEquity: f.debtToEquity != null ? Math.max(100 - f.debtToEquity * 30, 0) : null,
-    cashCoverage:
-      f.totalCash != null && f.totalDebt != null && f.totalDebt > 0
-        ? Math.min((f.totalCash / f.totalDebt) * 60, 100) : null,
+    cashCoverage: f.totalCash != null && f.totalDebt != null && f.totalDebt > 0
+      ? Math.min((f.totalCash / f.totalDebt) * 60, 100) : null,
     pe: f.peRatio != null ? Math.max(100 - (f.peRatio - 15) * 2, 0) : null,
     pb: f.pbRatio != null ? Math.max(100 - (f.pbRatio - 3) * 8, 0) : null,
   };
@@ -320,7 +338,6 @@ async function handleScore(symbol: string) {
   const range = (high52 - low52) || 1;
   const mom = currentPrice > 0 ? clamp(((currentPrice - low52) / range) * 100) : 50;
 
-  // Penalties: explicit deductions when red flags are present
   const penalties: { reason: string; points: number }[] = [];
   if (f.netMargin != null && f.netMargin < 0) penalties.push({ reason: 'Negative net margin', points: 5 });
   if (f.debtToEquity != null && f.debtToEquity > 2) penalties.push({ reason: 'High leverage (D/E > 2)', points: 5 });
@@ -336,9 +353,7 @@ async function handleScore(symbol: string) {
     { name: 'Valuation', score: val, weight: 0.20, grade: toGrade(val),
       details: `P/E ${f.peRatio?.toFixed?.(1) ?? 'N/A'}, P/B ${f.pbRatio?.toFixed?.(1) ?? 'N/A'}.` },
     { name: 'Momentum', score: mom, weight: 0.15, grade: toGrade(mom),
-      details: currentPrice > 0
-        ? `Trading at ${Math.round(((currentPrice - low52) / range) * 100)}% of 52-week range.`
-        : 'Insufficient price data.' },
+      details: currentPrice > 0 ? `Trading at ${Math.round(((currentPrice - low52) / range) * 100)}% of 52-week range.` : 'Insufficient price data.' },
   ];
 
   const weighted = pillars.reduce((s, p) => s + p.score * p.weight, 0);
@@ -355,7 +370,6 @@ async function handleScore(symbol: string) {
     grade: toGrade(overall),
     confidence,
     pillars,
-    // Alias for new shape requirement
     pillarScores: pillars.reduce((acc: any, p) => { acc[p.name] = p.score; return acc; }, {}),
     metricBreakdown: m,
     penalties,
@@ -370,7 +384,6 @@ async function handleScore(symbol: string) {
 // ── server ──────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
-
   try {
     const { action, ...params } = await req.json();
     const symbol = String(params.symbol || '').trim().toUpperCase();
@@ -385,10 +398,7 @@ Deno.serve(async (req) => {
       case 'score': result = await handleScore(symbol); break;
       default: return json({ error: 'Unknown action', action }, 400);
     }
-
-    if (result === null) {
-      return json({ error: 'No data available for symbol', symbol, action }, 404);
-    }
+    if (result === null) return json({ error: 'No data available for symbol', symbol, action }, 404);
     return json(result);
   } catch (err) {
     const message = (err as Error).message || 'Unknown error';
