@@ -179,6 +179,7 @@ export default function CompanyPage() {
             <TabsTrigger value="fundamentals" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Fundamentals</TabsTrigger>
             <TabsTrigger value="price" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Price</TabsTrigger>
             <TabsTrigger value="breakdown" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Score Breakdown</TabsTrigger>
+            <TabsTrigger value="dcf" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">DCF Lite</TabsTrigger>
             <TabsTrigger value="methodology" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Methodology</TabsTrigger>
           </TabsList>
 
