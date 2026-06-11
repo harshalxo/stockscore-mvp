@@ -82,6 +82,36 @@ export interface StockScore {
   lastUpdated: string;
 }
 
+export interface DcfAssumptions {
+  forecastYears: number;
+  fcfGrowthRate: number;
+  discountRate: number;
+  terminalGrowthRate: number;
+  safetyMargin: number;
+}
+
+export interface DcfLiteResult {
+  symbol: string;
+  currency?: string;
+  baseFcf: number | null;
+  baseFcfSource?: string | null;
+  assumptions: DcfAssumptions;
+  projectedFcfs: { year: number; fcf: number | null; discounted: number | null }[];
+  discountedFcfs: { year: number; value: number | null }[];
+  terminalValue: number | null;
+  pvTerminalValue: number | null;
+  enterpriseValue: number | null;
+  sharesOutstanding: number | null;
+  intrinsicValuePerShare: number | null;
+  currentPrice: number | null;
+  upsideDownsidePct: number | null;
+  fairValueRange: { downside: number; upside: number } | null;
+  interpretation: string;
+  warnings: string[];
+  error?: string;
+  fetchedAt: string;
+}
+
 export function getCurrencySymbol(code?: string): string {
   switch ((code || 'USD').toUpperCase()) {
     case 'USD': return '$';

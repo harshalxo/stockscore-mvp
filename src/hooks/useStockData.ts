@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { stockApi } from '@/lib/api';
+import type { DcfAssumptions } from '@/types/stock';
+
 
 export function useSearch(query: string) {
   return useQuery({
@@ -45,5 +47,14 @@ export function useScore(symbol: string) {
     staleTime: 60_000,
     refetchOnMount: 'always',
     retry: 1,
+  });
+}
+
+export function useDcf(symbol: string, assumptions?: Partial<DcfAssumptions>) {
+  return useQuery({
+    queryKey: ['dcf', symbol, assumptions],
+    queryFn: () => stockApi.dcf(symbol, assumptions),
+    enabled: !!symbol,
+    staleTime: 60_000,
   });
 }

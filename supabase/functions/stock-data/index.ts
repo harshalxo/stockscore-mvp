@@ -515,6 +515,143 @@ async function handleScore(symbol: string) {
   };
 }
 
+// ── DCF Lite (Phase 1 Basic Fair Value Estimate) ────────────────────────
+// NOT an institutional DCF. Educational, transparent, assumption-driven.
+type DcfAssumptions = {
+  forecastYears: number;
+  fcfGrowthRate: number;
+  discountRate: number;
+  terminalGrowthRate: number;
+  safetyMargin: number;
+};
+const DEFAULT_DCF: DcfAssumptions = {
+  forecastYears: 5,
+  fcfGrowthRate: 0.06,
+  discountRate: 0.10,
+  terminalGrowthRate: 0.025,
+  safetyMargin: 0.15,
+};
+
+function num(v: any): number | null {
+  const n = typeof v === 'number' ? v : Number(v);
+  return isFinite(n) ? n : null;
+}
+
+async function handleDcf(symbol: string, paramsIn: any) {
+  const a: DcfAssumptions = {
+    forecastYears: Math.max(1, Math.min(10, num(paramsIn.forecastYears) ?? DEFAULT_DCF.forecastYears)),
+    fcfGrowthRate: num(paramsIn.fcfGrowthRate) ?? DEFAULT_DCF.fcfGrowthRate,
+    discountRate: num(paramsIn.discountRate) ?? DEFAULT_DCF.discountRate,
+    terminalGrowthRate: num(paramsIn.terminalGrowthRate) ?? DEFAULT_DCF.terminalGrowthRate,
+    safetyMargin: num(paramsIn.safetyMargin) ?? DEFAULT_DCF.safetyMargin,
+  };
+
+  const warnings: string[] = [];
+  const fetchedAt = new Date().toISOString();
+
+  if (a.discountRate <= a.terminalGrowthRate) {
+    return {
+      symbol, assumptions: a, warnings,
+      error: 'Validation error: discountRate must be greater than terminalGrowthRate.',
+      fetchedAt,
+    };
+  }
+
+  const [overview, fund] = await Promise.all([
+    handleOverview(symbol).catch(() => null),
+    handleFundamentals(symbol).catch(() => null),
+  ]);
+
+  if (!overview && !fund) {
+    return { symbol, assumptions: a, warnings: ['No data available from Yahoo Finance for this symbol.'], error: 'No data available.', fetchedAt };
+  }
+
+  const currency = overview?.currency || fund?.currency || 'USD';
+  const currentPrice: number | null = num(overview?.currentPrice);
+  const sharesOutstanding: number | null = num(overview?.sharesOutstanding);
+
+  // Base FCF: prefer fundamentals.freeCashFlow, else latest annual FCF, else OCF - |Capex|
+  const annual = Array.isArray((fund as any)?.annual) ? (fund as any).annual : [];
+  const latest = annual[0] ?? {};
+  let baseFcf: number | null = num(fund?.freeCashFlow) ?? num(latest.freeCf);
+  let baseFcfSource = baseFcf != null ? (num(fund?.freeCashFlow) != null ? 'fundamentals.freeCashFlow' : 'latest annual freeCashFlow') : null;
+  if (baseFcf == null) {
+    const ocf = num(latest.operatingCf);
+    const capex = num(latest.capex);
+    if (ocf != null && capex != null) {
+      // capex is reported negative on Yahoo; OCF - |capex| is safe either way
+      baseFcf = ocf - Math.abs(capex);
+      baseFcfSource = 'Operating Cash Flow − |Capex|';
+    }
+  }
+
+  if (baseFcf == null) warnings.push('Free Cash Flow could not be determined from available data.');
+  if (sharesOutstanding == null) warnings.push('Shares outstanding unavailable — per-share intrinsic value cannot be computed.');
+  if (currentPrice == null) warnings.push('Current price unavailable — upside/downside cannot be computed.');
+  if (baseFcf != null && baseFcf < 0) warnings.push('Base Free Cash Flow is negative. A DCF on negative FCF produces a misleading valuation; treat results as not meaningful.');
+
+  // Always project the schedule (even with negative/null FCF) so the UI can render the table,
+  // but mark intrinsicValuePerShare as null when inputs are unsafe.
+  const projectedFcfs: { year: number; fcf: number | null; discounted: number | null }[] = [];
+  let pvFcfSum = 0;
+  let lastProjected: number | null = null;
+  for (let t = 1; t <= a.forecastYears; t++) {
+    const proj = baseFcf == null ? null : baseFcf * Math.pow(1 + a.fcfGrowthRate, t);
+    const disc = proj == null ? null : proj / Math.pow(1 + a.discountRate, t);
+    if (disc != null) pvFcfSum += disc;
+    if (proj != null) lastProjected = proj;
+    projectedFcfs.push({ year: t, fcf: proj, discounted: disc });
+  }
+
+  const terminalValue = lastProjected == null
+    ? null
+    : (lastProjected * (1 + a.terminalGrowthRate)) / (a.discountRate - a.terminalGrowthRate);
+  const pvTerminalValue = terminalValue == null
+    ? null
+    : terminalValue / Math.pow(1 + a.discountRate, a.forecastYears);
+
+  const enterpriseValue = (lastProjected != null && pvTerminalValue != null) ? pvFcfSum + pvTerminalValue : null;
+
+  const valuationSafe = baseFcf != null && baseFcf > 0 && sharesOutstanding != null && sharesOutstanding > 0 && enterpriseValue != null;
+  const intrinsicValuePerShare = valuationSafe ? (enterpriseValue as number) / (sharesOutstanding as number) : null;
+  const upsideDownsidePct = (intrinsicValuePerShare != null && currentPrice != null && currentPrice > 0)
+    ? (intrinsicValuePerShare - currentPrice) / currentPrice
+    : null;
+
+  const fairValueRange = intrinsicValuePerShare == null ? null : {
+    downside: intrinsicValuePerShare * (1 - a.safetyMargin),
+    upside: intrinsicValuePerShare * (1 + a.safetyMargin),
+  };
+
+  let interpretation = 'Insufficient data to estimate fair value.';
+  if (intrinsicValuePerShare != null && currentPrice != null && fairValueRange) {
+    if (currentPrice < fairValueRange.downside) interpretation = 'Appears below estimated fair value range. Valuation depends heavily on assumptions.';
+    else if (currentPrice > fairValueRange.upside) interpretation = 'Appears above estimated fair value range. Valuation depends heavily on assumptions.';
+    else interpretation = 'Appears within the estimated fair value range. Valuation depends heavily on assumptions.';
+  }
+
+  return {
+    symbol,
+    currency,
+    baseFcf,
+    baseFcfSource,
+    assumptions: a,
+    projectedFcfs,
+    discountedFcfs: projectedFcfs.map((p) => ({ year: p.year, value: p.discounted })),
+    terminalValue,
+    pvTerminalValue,
+    enterpriseValue,
+    sharesOutstanding,
+    intrinsicValuePerShare,
+    currentPrice,
+    upsideDownsidePct,
+    fairValueRange,
+    interpretation,
+    warnings,
+    fetchedAt,
+  };
+}
+
 // ── server ──────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
@@ -530,6 +667,7 @@ Deno.serve(async (req) => {
       case 'fundamentals': result = await handleFundamentals(symbol); break;
       case 'prices': result = await handlePrices(symbol); break;
       case 'score': result = await handleScore(symbol); break;
+      case 'dcf': result = await handleDcf(symbol, params); break;
       default: return json({ error: 'Unknown action', action }, 400);
     }
     if (result === null) return json({ error: 'No data available for symbol', symbol, action }, 404);

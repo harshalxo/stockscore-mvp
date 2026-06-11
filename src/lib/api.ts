@@ -1,7 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
-import type { SearchResult, CompanyOverview, Fundamentals, PriceData, StockScore } from '@/types/stock';
+import type { SearchResult, CompanyOverview, Fundamentals, PriceData, StockScore, DcfLiteResult, DcfAssumptions } from '@/types/stock';
 
-async function callStockData<T>(action: string, params: Record<string, string> = {}): Promise<T> {
+async function callStockData<T>(action: string, params: Record<string, unknown> = {}): Promise<T> {
   const { data, error } = await supabase.functions.invoke('stock-data', {
     body: { action, ...params },
   });
@@ -17,4 +17,6 @@ export const stockApi = {
   fundamentals: (symbol: string) => callStockData<Fundamentals>('fundamentals', { symbol }),
   prices: (symbol: string) => callStockData<PriceData>('prices', { symbol }),
   score: (symbol: string) => callStockData<StockScore>('score', { symbol }),
+  dcf: (symbol: string, assumptions?: Partial<DcfAssumptions>) =>
+    callStockData<DcfLiteResult>('dcf', { symbol, ...(assumptions || {}) }),
 };
