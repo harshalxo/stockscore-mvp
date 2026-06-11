@@ -298,6 +298,46 @@ function toGrade(s: number) {
 }
 function fmtPct(v: number | null) { return v != null ? `${Math.round(v * 100)}%` : 'N/A'; }
 
+// ── Phase 1 transparent scoring ────────────────────────────────────────
+// Pillars: Quality 0.30, Growth 0.20, Cash Flow 0.20, Risk 0.15, Valuation 0.15.
+// Each metric is bucketed into a 0-100 score with an explicit formula. Missing
+// metrics are dropped and the remaining metric weights are renormalized; the
+// same renormalization applies across pillars. Confidence is MEDIUM with a full
+// 3-year history, otherwise LOW (HIGH is reserved for post-Phase-1 data depth).
+type Bin = { min: number; score: number };
+// bins are sorted descending by `min`; pick the first whose threshold the value meets.
+function binScore(value: number | null, bins: Bin[]): number | null {
+  if (value == null || !isFinite(value)) return null;
+  for (const b of bins) if (value >= b.min) return b.score;
+  return 0;
+}
+function safeDiv(a: number | null | undefined, b: number | null | undefined): number | null {
+  if (a == null || b == null || !isFinite(a) || !isFinite(b) || b === 0) return null;
+  return a / b;
+}
+function cagr(latest: number | null, oldest: number | null, years: number): number | null {
+  if (latest == null || oldest == null || years <= 0) return null;
+  if (oldest <= 0 || latest <= 0) return null; // sign flips make CAGR meaningless
+  return Math.pow(latest / oldest, 1 / years) - 1;
+}
+
+type MetricEntry = {
+  pillar: string;
+  metric: string;
+  rawValue: number | null;
+  score: number | null;
+  weight: number;
+  formula: string;
+  explanation: string;
+};
+
+function weightedPillar(entries: MetricEntry[]): number | null {
+  const scored = entries.filter((e) => e.score != null);
+  if (!scored.length) return null;
+  const totalW = scored.reduce((s, e) => s + e.weight, 0) || 1;
+  return scored.reduce((s, e) => s + (e.score as number) * (e.weight / totalW), 0);
+}
+
 async function handleScore(symbol: string) {
   const [fund, s, q] = await Promise.all([
     handleFundamentals(symbol).catch(() => null),
@@ -306,76 +346,170 @@ async function handleScore(symbol: string) {
   ]);
 
   const price: any = s?.price ?? {};
-  const sd: any = s?.summaryDetail ?? {};
   const Q: any = q ?? {};
   const f: any = fund || {};
-
-  const currentPrice = Q.regularMarketPrice ?? raw(price.regularMarketPrice) ?? 0;
-  const high52 = Q.fiftyTwoWeekHigh ?? raw(sd.fiftyTwoWeekHigh) ?? currentPrice;
-  const low52 = Q.fiftyTwoWeekLow ?? raw(sd.fiftyTwoWeekLow) ?? currentPrice;
+  const annual: any[] = Array.isArray(f.annual) ? f.annual : [];
   const shortName = Q.longName || Q.shortName || price.shortName || symbol;
   const currency = Q.currency || price.currency || f.currency || 'USD';
 
-  const m = {
-    grossMargin: f.grossMargin != null ? f.grossMargin * 120 : null,
-    operatingMargin: f.operatingMargin != null ? f.operatingMargin * 200 : null,
-    netMargin: f.netMargin != null ? f.netMargin * 250 : null,
-    roe: f.roe != null ? Math.min(f.roe * 200, 100) : null,
-    revenueGrowth: f.revenueGrowth != null ? 50 + f.revenueGrowth * 200 : null,
-    earningsGrowth: f.earningsGrowth != null ? 50 + f.earningsGrowth * 150 : null,
-    currentRatio: f.currentRatio != null ? Math.min(f.currentRatio * 40, 100) : null,
-    debtToEquity: f.debtToEquity != null ? Math.max(100 - f.debtToEquity * 30, 0) : null,
-    cashCoverage: f.totalCash != null && f.totalDebt != null && f.totalDebt > 0
-      ? Math.min((f.totalCash / f.totalDebt) * 60, 100) : null,
-    pe: f.peRatio != null ? Math.max(100 - (f.peRatio - 15) * 2, 0) : null,
-    pb: f.pbRatio != null ? Math.max(100 - (f.pbRatio - 3) * 8, 0) : null,
-  };
+  const latest = annual[0] ?? {};
+  const oldest = annual[annual.length - 1] ?? {};
+  const yearSpan = Math.max(annual.length - 1, 0);
 
-  const profit = clamp(avg([m.grossMargin, m.operatingMargin, m.netMargin, m.roe]));
-  const growth = clamp(avg([m.revenueGrowth, m.earningsGrowth]));
-  const health = clamp(avg([m.currentRatio, m.debtToEquity, m.cashCoverage]));
-  const val = clamp(avg([m.pe, m.pb]));
-  const range = (high52 - low52) || 1;
-  const mom = currentPrice > 0 ? clamp(((currentPrice - low52) / range) * 100) : 50;
+  // ── raw metrics ──
+  const roce = safeDiv(latest.ebit, ((latest.totalEquity ?? 0) + (latest.totalDebt ?? 0) - (latest.cashAndEquiv ?? 0)) || null);
+  const roe = safeDiv(latest.netIncome, latest.totalEquity) ?? f.roe ?? null;
+  const roa = safeDiv(latest.netIncome, latest.totalAssets);
+  const ebitMargin = safeDiv(latest.ebit, latest.revenue);
+  const revCagr = cagr(latest.revenue, oldest.revenue, yearSpan);
+  const niCagr = cagr(latest.netIncome, oldest.netIncome, yearSpan);
+  const fcfMargin = safeDiv(latest.freeCf, latest.revenue);
+  const ocfNi = safeDiv(latest.operatingCf, latest.netIncome);
+  const de = safeDiv(latest.totalDebt, latest.totalEquity) ?? f.debtToEquity ?? null;
+  const intCov = safeDiv(latest.ebit, latest.interestExpense != null ? Math.abs(latest.interestExpense) : null);
+  const pe = f.peRatio ?? null;
+  const pb = f.pbRatio ?? null;
 
-  const penalties: { reason: string; points: number }[] = [];
-  if (f.netMargin != null && f.netMargin < 0) penalties.push({ reason: 'Negative net margin', points: 5 });
-  if (f.debtToEquity != null && f.debtToEquity > 2) penalties.push({ reason: 'High leverage (D/E > 2)', points: 5 });
-  if (f.currentRatio != null && f.currentRatio < 1) penalties.push({ reason: 'Current ratio < 1', points: 3 });
-
-  const pillars = [
-    { name: 'Profitability', score: profit, weight: 0.25, grade: toGrade(profit),
-      details: `Gross ${fmtPct(f.grossMargin)}, op ${fmtPct(f.operatingMargin)}, net ${fmtPct(f.netMargin)}, ROE ${fmtPct(f.roe)}.` },
-    { name: 'Growth', score: growth, weight: 0.20, grade: toGrade(growth),
-      details: `Revenue growth ${fmtPct(f.revenueGrowth)}, earnings growth ${fmtPct(f.earningsGrowth)}.` },
-    { name: 'Financial Health', score: health, weight: 0.20, grade: toGrade(health),
-      details: `Current ratio ${f.currentRatio?.toFixed?.(2) ?? 'N/A'}, D/E ${f.debtToEquity?.toFixed?.(2) ?? 'N/A'}.` },
-    { name: 'Valuation', score: val, weight: 0.20, grade: toGrade(val),
-      details: `P/E ${f.peRatio?.toFixed?.(1) ?? 'N/A'}, P/B ${f.pbRatio?.toFixed?.(1) ?? 'N/A'}.` },
-    { name: 'Momentum', score: mom, weight: 0.15, grade: toGrade(mom),
-      details: currentPrice > 0 ? `Trading at ${Math.round(((currentPrice - low52) / range) * 100)}% of 52-week range.` : 'Insufficient price data.' },
+  // ── transparent bins (each row: "value ≥ min → score") ──
+  const pctBins = (a: number, b: number, c: number, d: number): Bin[] => [
+    { min: a, score: 100 }, { min: b, score: 80 }, { min: c, score: 60 }, { min: d, score: 40 }, { min: -Infinity, score: 20 },
   ];
 
-  const weighted = pillars.reduce((s, p) => s + p.score * p.weight, 0);
-  const penaltyTotal = penalties.reduce((s, p) => s + p.points, 0);
-  const overall = clamp(weighted - penaltyTotal);
+  const entries: MetricEntry[] = [
+    { pillar: 'Quality', metric: 'ROCE', rawValue: roce, weight: 0.30,
+      score: binScore(roce, pctBins(0.20, 0.15, 0.10, 0.05)),
+      formula: 'EBIT / (Equity + Debt − Cash)',
+      explanation: '≥20% → 100, ≥15% → 80, ≥10% → 60, ≥5% → 40, else 20.' },
+    { pillar: 'Quality', metric: 'ROE', rawValue: roe, weight: 0.30,
+      score: binScore(roe, pctBins(0.20, 0.15, 0.10, 0.05)),
+      formula: 'Net Income / Total Equity',
+      explanation: '≥20% → 100, ≥15% → 80, ≥10% → 60, ≥5% → 40, else 20.' },
+    { pillar: 'Quality', metric: 'ROA', rawValue: roa, weight: 0.20,
+      score: binScore(roa, pctBins(0.10, 0.07, 0.04, 0.02)),
+      formula: 'Net Income / Total Assets',
+      explanation: '≥10% → 100, ≥7% → 80, ≥4% → 60, ≥2% → 40, else 20.' },
+    { pillar: 'Quality', metric: 'EBIT Margin', rawValue: ebitMargin, weight: 0.20,
+      score: binScore(ebitMargin, pctBins(0.25, 0.18, 0.12, 0.06)),
+      formula: 'EBIT / Revenue',
+      explanation: '≥25% → 100, ≥18% → 80, ≥12% → 60, ≥6% → 40, else 20.' },
 
-  const available = [f.peRatio, f.roe, f.revenueGrowth, f.grossMargin].filter((v) => v != null).length;
-  const confidence = available >= 3 ? 'high' : f.peRatio != null ? 'medium' : 'low';
-  const yearsUsed = Array.isArray(f.annual) ? f.annual.map((a: any) => a.year) : [];
+    { pillar: 'Growth', metric: 'Revenue CAGR', rawValue: revCagr, weight: 0.50,
+      score: binScore(revCagr, pctBins(0.20, 0.12, 0.06, 0.02)),
+      formula: `(Latest Revenue / Oldest Revenue)^(1/${yearSpan || 'n'}) − 1`,
+      explanation: '≥20% → 100, ≥12% → 80, ≥6% → 60, ≥2% → 40, else 20.' },
+    { pillar: 'Growth', metric: 'Net Income CAGR', rawValue: niCagr, weight: 0.50,
+      score: binScore(niCagr, pctBins(0.20, 0.12, 0.06, 0.02)),
+      formula: `(Latest Net Income / Oldest Net Income)^(1/${yearSpan || 'n'}) − 1`,
+      explanation: '≥20% → 100, ≥12% → 80, ≥6% → 60, ≥2% → 40, else 20.' },
+
+    { pillar: 'Cash Flow', metric: 'FCF Margin', rawValue: fcfMargin, weight: 0.50,
+      score: binScore(fcfMargin, pctBins(0.15, 0.10, 0.05, 0.00)),
+      formula: 'Free Cash Flow / Revenue',
+      explanation: '≥15% → 100, ≥10% → 80, ≥5% → 60, ≥0% → 40, else 20.' },
+    { pillar: 'Cash Flow', metric: 'OCF / Net Income', rawValue: ocfNi, weight: 0.50,
+      score: binScore(ocfNi, pctBins(1.2, 1.0, 0.8, 0.5)),
+      formula: 'Operating Cash Flow / Net Income',
+      explanation: '≥1.2 → 100, ≥1.0 → 80, ≥0.8 → 60, ≥0.5 → 40, else 20.' },
+
+    { pillar: 'Risk', metric: 'Debt / Equity', rawValue: de, weight: 0.50,
+      // lower is better → invert by negating value against descending thresholds
+      score: de == null ? null : binScore(-de, [
+        { min: -0.3, score: 100 }, { min: -0.6, score: 80 }, { min: -1.0, score: 60 }, { min: -2.0, score: 40 }, { min: -Infinity, score: 20 },
+      ]),
+      formula: 'Total Debt / Total Equity',
+      explanation: '≤0.3 → 100, ≤0.6 → 80, ≤1.0 → 60, ≤2.0 → 40, else 20.' },
+    { pillar: 'Risk', metric: 'Interest Coverage', rawValue: intCov, weight: 0.50,
+      score: binScore(intCov, [
+        { min: 15, score: 100 }, { min: 8, score: 80 }, { min: 4, score: 60 }, { min: 2, score: 40 }, { min: -Infinity, score: 20 },
+      ]),
+      formula: 'EBIT / Interest Expense',
+      explanation: '≥15× → 100, ≥8× → 80, ≥4× → 60, ≥2× → 40, else 20.' },
+
+    { pillar: 'Valuation', metric: 'P/E', rawValue: pe, weight: 0.50,
+      score: pe == null || pe <= 0 ? null : binScore(-pe, [
+        { min: -10, score: 100 }, { min: -18, score: 80 }, { min: -25, score: 60 }, { min: -40, score: 40 }, { min: -Infinity, score: 20 },
+      ]),
+      formula: 'trailingPE',
+      explanation: '≤10 → 100, ≤18 → 80, ≤25 → 60, ≤40 → 40, else 20. Non-positive P/E ignored.' },
+    { pillar: 'Valuation', metric: 'P/B', rawValue: pb, weight: 0.50,
+      score: pb == null || pb <= 0 ? null : binScore(-pb, [
+        { min: -1, score: 100 }, { min: -2, score: 80 }, { min: -4, score: 60 }, { min: -6, score: 40 }, { min: -Infinity, score: 20 },
+      ]),
+      formula: 'priceToBook',
+      explanation: '≤1 → 100, ≤2 → 80, ≤4 → 60, ≤6 → 40, else 20. Non-positive P/B ignored.' },
+  ];
+
+  const pillarMeta: Record<string, { weight: number }> = {
+    Quality:     { weight: 0.30 },
+    Growth:      { weight: 0.20 },
+    'Cash Flow': { weight: 0.20 },
+    Risk:        { weight: 0.15 },
+    Valuation:   { weight: 0.15 },
+  };
+
+  // ── penalties (Phase 1 explicit rules) ──
+  const penalties: { code: string; points: number; reason: string }[] = [];
+  const ocfs = annual.map((y) => y.operatingCf).filter((v) => v != null);
+  const nis = annual.map((y) => y.netIncome).filter((v) => v != null);
+  if (annual.length >= 3 && ocfs.length === annual.length && nis.length === annual.length
+      && annual.every((y) => y.operatingCf < y.netIncome)) {
+    penalties.push({ code: 'OCF_LT_NI_3Y', points: 10, reason: 'Operating cash flow below net income in every available year.' });
+  }
+  const debts = annual.map((y) => y.totalDebt).filter((v) => v != null);
+  const covs = annual.map((y) => safeDiv(y.ebit, y.interestExpense != null ? Math.abs(y.interestExpense) : null)).filter((v) => v != null) as number[];
+  const debtIncreasing = debts.length >= 2 && debts[0]! > debts[debts.length - 1]!;
+  const coverageFalling = covs.length >= 2 && covs[0]! < covs[covs.length - 1]!;
+  if (debtIncreasing && coverageFalling) {
+    penalties.push({ code: 'DEBT_UP_COV_DOWN', points: 10, reason: 'Debt rising while interest coverage deteriorates.' });
+  }
+  const fcfs = annual.map((y) => y.freeCf).filter((v) => v != null);
+  const capCashFlow = annual.length >= 1 && fcfs.length === annual.length && annual.every((y) => y.freeCf < 0);
+  if (capCashFlow) {
+    penalties.push({ code: 'FCF_NEG_ALL', points: 0, reason: 'Free cash flow negative in every available year — Cash Flow pillar capped at 40.' });
+  }
+
+  // ── compute pillar scores with renormalization, then overall ──
+  const pillars = Object.entries(pillarMeta).map(([name, meta]) => {
+    let score = weightedPillar(entries.filter((e) => e.pillar === name));
+    if (name === 'Cash Flow' && capCashFlow && score != null) score = Math.min(score, 40);
+    const detailParts = entries.filter((e) => e.pillar === name)
+      .map((e) => `${e.metric}: ${e.rawValue == null ? 'N/A' : (Math.abs(e.rawValue) < 10 ? e.rawValue.toFixed(2) : e.rawValue.toFixed(1))}${e.score == null ? '' : ` → ${e.score}`}`);
+    return {
+      name,
+      score: score == null ? null : Math.round(score),
+      weight: meta.weight,
+      grade: score == null ? 'N/A' : toGrade(score),
+      details: detailParts.join(' · ') || 'No metrics available.',
+    };
+  });
+
+  const available = pillars.filter((p) => p.score != null);
+  const totalW = available.reduce((s, p) => s + p.weight, 0) || 1;
+  const weighted = available.reduce((s, p) => s + (p.score as number) * (p.weight / totalW), 0);
+  const penaltyPoints = penalties.reduce((s, p) => s + p.points, 0);
+  const overall = available.length ? clamp(weighted - penaltyPoints) : 0;
+
+  const yearsUsed = annual.map((a: any) => a.year);
+  const confidence: 'high' | 'medium' | 'low' = annual.length >= 3 ? 'medium' : 'low';
+
+  // UI-facing pillars must always render — fill missing with score 0 + N/A grade.
+  const pillarsForUi = pillars.map((p) => ({
+    ...p,
+    score: p.score ?? 0,
+  }));
 
   return {
     symbol,
     overallScore: overall,
     grade: toGrade(overall),
     confidence,
-    pillars,
+    pillars: pillarsForUi,
     pillarScores: pillars.reduce((acc: any, p) => { acc[p.name] = p.score; return acc; }, {}),
-    metricBreakdown: m,
+    metricBreakdown: entries,
     penalties,
     yearsUsed,
     currency,
-    summary: `${shortName} scores ${overall}/100 (${toGrade(overall)}) from live fundamentals.`,
+    summary: `${shortName} scores ${overall}/100 (${toGrade(overall)}) using ${annual.length}-year fundamentals (${confidence} confidence).`,
     lastUpdated: new Date().toISOString(),
     fetchedAt: new Date().toISOString(),
   };
