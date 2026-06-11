@@ -49,3 +49,12 @@ export function useScore(symbol: string) {
     retry: 1,
   });
 }
+
+export function useDcf(symbol: string, assumptions?: Partial<DcfAssumptions>) {
+  return useQuery({
+    queryKey: ['dcf', symbol, assumptions],
+    queryFn: () => stockApi.dcf(symbol, assumptions),
+    enabled: !!symbol,
+    staleTime: 60_000,
+  });
+}
