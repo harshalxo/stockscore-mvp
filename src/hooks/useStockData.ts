@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { stockApi } from '@/lib/api';
+import type { DcfAssumptions } from '@/types/stock';
+
 
 export function useSearch(query: string) {
   return useQuery({
