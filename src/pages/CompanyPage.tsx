@@ -520,62 +520,112 @@ else → "low"`}
           </TabsContent>
         </Tabs>
 
-        {/* Data Attribution Footer */}
+        {/* Data Trust & Metadata Panel */}
         <motion.div
           className="mt-10 border-t border-border/30 pt-6 pb-4 space-y-3"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
         >
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground/70">
-            <span className="flex items-center gap-1.5">
-              <Database className="h-3.5 w-3.5" />
-              Data provided by Yahoo Finance
-            </span>
-            {sc?.lastUpdated && (
-              <span className="flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5" />
-                Score updated {new Date(sc.lastUpdated).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-              </span>
-            )}
-            {overview.dataUpdatedAt && (
-              <span className="flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5" />
-                Profile fetched {new Date(overview.dataUpdatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-              </span>
-            )}
-            {prices.dataUpdatedAt && (
-              <span className="flex items-center gap-1.5">
-                <Clock className="h-3.5 w-3.5" />
-                Prices fetched {new Date(prices.dataUpdatedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
-              </span>
-            )}
-          </div>
+          {(() => {
+            // Compute coverage status + missing field count
+            const missingFields: string[] = [];
+            if (!fund) missingFields.push('fundamentals');
+            else {
+              if (fund.peRatio == null) missingFields.push('P/E');
+              if (fund.pbRatio == null) missingFields.push('P/B');
+              if (fund.roe == null) missingFields.push('ROE');
+              if (fund.grossMargin == null) missingFields.push('gross margin');
+              if (fund.operatingMargin == null) missingFields.push('operating margin');
+              if (fund.netMargin == null) missingFields.push('net margin');
+              if (fund.revenueGrowth == null) missingFields.push('revenue growth');
+              if (fund.earningsGrowth == null) missingFields.push('earnings growth');
+              if (fund.debtToEquity == null) missingFields.push('debt/equity');
+              if (fund.currentRatio == null) missingFields.push('current ratio');
+              if (fund.freeCashFlow == null) missingFields.push('free cash flow');
+            }
+            if (!pr) missingFields.push('price');
+            else if (!pr.history || pr.history.length === 0) missingFields.push('price history');
+            if (!sc) missingFields.push('score');
 
-          {/* Data coverage notes */}
-          <div className="flex items-start gap-2 text-xs text-muted-foreground/60 bg-secondary/30 rounded-lg px-3 py-2.5 max-w-3xl">
-            <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <p>
-              {(() => {
-                const missing: string[] = [];
-                if (!fund) missing.push('fundamentals');
-                else {
-                  if (fund.peRatio == null && fund.pbRatio == null) missing.push('valuation ratios');
-                  if (fund.grossMargin == null && fund.netMargin == null) missing.push('margin data');
-                  if (fund.revenueGrowth == null && fund.earningsGrowth == null) missing.push('growth metrics');
-                  if (fund.currentRatio == null && fund.debtToEquity == null) missing.push('balance sheet ratios');
-                }
-                if (!pr) missing.push('price data');
-                else if (!pr.history || pr.history.length === 0) missing.push('price history');
+            const sectionsAvailable = [!!co, !!fund, !!pr, !!sc].filter(Boolean).length;
+            let status: 'Complete' | 'Partial' | 'Limited' = 'Complete';
+            if (sectionsAvailable <= 2 || missingFields.length >= 6) status = 'Limited';
+            else if (missingFields.length > 0) status = 'Partial';
 
-                if (missing.length === 0) {
-                  return 'Full data coverage — all key metrics available for this analysis. Scores are based on trailing twelve-month financials and real-time market data.';
-                }
-                return `Partial data coverage — missing ${missing.join(', ')}. Score confidence may be affected. Scores are based on available trailing twelve-month financials.`;
-              })()}
-            </p>
-          </div>
+            const statusStyle =
+              status === 'Complete'
+                ? 'bg-score-excellent/10 text-score-excellent border-score-excellent/30'
+                : status === 'Partial'
+                ? 'bg-score-neutral/10 text-score-neutral border-score-neutral/30'
+                : 'bg-score-bad/10 text-score-bad border-score-bad/30';
+
+            const yearsUsed = sc?.yearsUsed && sc.yearsUsed.length > 0 ? sc.yearsUsed : null;
+            const lastFetched = Math.max(
+              overview.dataUpdatedAt || 0,
+              prices.dataUpdatedAt || 0,
+              fundamentals.dataUpdatedAt || 0,
+              score.dataUpdatedAt || 0,
+            );
+
+            return (
+              <>
+                <Card className="glass-card">
+                  <CardContent className="p-4 sm:p-5">
+                    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 text-xs">
+                      <div className="flex items-center gap-2">
+                        <Database className="h-3.5 w-3.5 text-primary" />
+                        <span className="text-muted-foreground">Data source</span>
+                        <span className="font-mono text-foreground">Yahoo Finance · server Edge Function</span>
+                      </div>
+                      {lastFetched > 0 && (
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-3.5 w-3.5 text-primary" />
+                          <span className="text-muted-foreground">Last fetched</span>
+                          <span className="font-mono text-foreground">
+                            {new Date(lastFetched).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Coverage</span>
+                        <span className={`font-mono px-2 py-0.5 rounded border ${statusStyle}`}>{status}</span>
+                      </div>
+                      {yearsUsed && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Fundamentals years</span>
+                          <span className="font-mono text-foreground">
+                            {yearsUsed.length} ({yearsUsed.join(', ')})
+                          </span>
+                        </div>
+                      )}
+                      {missingFields.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Missing fields</span>
+                          <span className="font-mono text-foreground">{missingFields.length}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {missingFields.length > 0 && (
+                      <p className="mt-3 text-[11px] text-muted-foreground/70 leading-relaxed">
+                        Not available: <span className="font-mono">{missingFields.slice(0, 8).join(', ')}</span>
+                        {missingFields.length > 8 ? `, +${missingFields.length - 8} more` : ''}.
+                        {' '}Missing pillars are excluded and the overall score is renormalized across available pillars.
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <div className="flex items-start gap-2 text-[11px] text-muted-foreground/70 px-1">
+                  <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                  <p>This tool is for educational analysis only and is not investment advice.</p>
+                </div>
+              </>
+            );
+          })()}
         </motion.div>
+
       </main>
     </div>
   );
