@@ -80,7 +80,12 @@ export interface StockScore {
   summary: string;
   currency?: string;
   lastUpdated: string;
+  yearsUsed?: (number | string)[];
+  metricBreakdown?: unknown[];
+  penalties?: unknown[];
+  fetchedAt?: string;
 }
+
 
 export interface DcfAssumptions {
   forecastYears: number;
