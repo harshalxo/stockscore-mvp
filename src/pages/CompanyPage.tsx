@@ -377,81 +377,106 @@ export default function CompanyPage() {
           {/* Methodology Tab */}
           <TabsContent value="methodology">
             <div className="space-y-6">
+              {/* 1. What StockScore does */}
               <Card className="glass-card">
-                <CardHeader><CardTitle className="text-base">Scoring Methodology</CardTitle></CardHeader>
-                <CardContent className="space-y-6 text-sm text-muted-foreground leading-relaxed">
-                  <div>
-                    <h4 className="font-semibold text-foreground mb-2">How StockScore Works</h4>
-                    <p>StockScore evaluates companies across five fundamental pillars using real-time data from Yahoo Finance. Each pillar produces a sub-score from 0–100, then the overall score is calculated as a weighted sum:</p>
-                    <div className="mt-3 p-3 rounded-lg bg-secondary/50 font-mono text-xs">
-                      Overall = Σ (pillar_score × weight), clamped 0–100
-                    </div>
-                  </div>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <BookOpen className="h-4 w-4 text-primary" />
+                    What StockScore Does
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground leading-relaxed space-y-3">
+                  <p>
+                    StockScore is an education-first stock analysis MVP. It combines fundamentals, transparent scoring, and basic valuation to help you learn how companies are evaluated — not to tell you what to buy or sell.
+                  </p>
+                  <p>
+                    All data is fetched server-side from Yahoo Finance through a single Edge Function. The frontend never calls external APIs directly, so your analysis stays private and rate limits are managed safely.
+                  </p>
                 </CardContent>
               </Card>
 
-              {/* Exact formulas per pillar */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* 2. Scoring formula */}
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Scale className="h-4 w-4 text-primary" />
+                    Scoring Formula
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    The overall score is a weighted average of five pillar scores. Each pillar is scored from 0 to 100, then combined using the weights below:
+                  </p>
+                  <div className="p-4 rounded-lg bg-secondary/50 font-mono text-sm text-foreground/90 overflow-x-auto">
+                    Score = 0.30 × Quality + 0.20 × Growth + 0.20 × Cash Flow + 0.15 × Risk + 0.15 × Valuation
+                  </div>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    If a pillar cannot be scored because data is missing, it is excluded and the remaining weights are renormalized so the total still equals 1.0.
+                  </p>
+                </CardContent>
+              </Card>
+
+              {/* 3. Pillars */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[
                   {
-                    title: 'Profitability',
-                    weight: '25%',
-                    inputs: ['Gross Margin', 'Operating Margin', 'Net Margin', 'Return on Equity (ROE)'],
-                    formula: 'avg(\n  grossMargin × 120,\n  opMargin × 200,\n  netMargin × 250,\n  min(ROE × 200, 100)\n)',
-                    note: 'Higher margins and ROE yield higher scores. Each metric is scaled so that strong performers score 70–100.',
+                    title: 'Quality',
+                    weight: '30%',
+                    icon: <ListChecks className="h-4 w-4 text-primary" />,
+                    desc: 'Profitability and capital efficiency.',
+                    metrics: ['ROCE — EBIT ÷ (Equity + Debt − Cash)', 'ROE — Net Income ÷ Total Equity', 'ROA — Net Income ÷ Total Assets', 'EBIT Margin — EBIT ÷ Revenue'],
+                    note: 'Higher margins and returns on capital mean the business turns investment into profit efficiently.',
                   },
                   {
                     title: 'Growth',
                     weight: '20%',
-                    inputs: ['Revenue Growth (YoY)', 'Earnings Growth (YoY)'],
-                    formula: 'avg(\n  50 + revenueGrowth × 200,\n  50 + earningsGrowth × 150\n)',
-                    note: 'Baseline of 50 = flat growth. 25% revenue growth → score of 100. Negative growth penalizes below 50.',
+                    icon: <TrendingUp className="h-4 w-4 text-primary" />,
+                    desc: 'Revenue and net income growth over time.',
+                    metrics: ['Revenue CAGR — compound annual growth', 'Net Income CAGR — compound annual growth'],
+                    note: 'Sustained growth across both top-line revenue and bottom-line earnings is preferred over one-off spikes.',
                   },
                   {
-                    title: 'Financial Health',
+                    title: 'Cash Flow',
                     weight: '20%',
-                    inputs: ['Current Ratio', 'Debt-to-Equity', 'Cash / Debt Ratio'],
-                    formula: 'avg(\n  min(currentRatio × 40, 100),\n  max(100 − D/E × 30, 0),\n  min(cash/debt × 60, 100)\n)',
-                    note: 'Rewards liquidity and low leverage. A current ratio of 2.5+ and D/E below 1.0 score well.',
+                    icon: <DollarSign className="h-4 w-4 text-primary" />,
+                    desc: 'Free cash flow generation and earnings quality.',
+                    metrics: ['FCF / Revenue — free cash flow per dollar of sales', 'OCF / Net Income — operating cash flow vs reported profit'],
+                    note: 'A company that converts most of its profit into real cash is generally healthier than one that does not.',
+                  },
+                  {
+                    title: 'Risk',
+                    weight: '15%',
+                    icon: <ShieldAlert className="h-4 w-4 text-primary" />,
+                    desc: 'Leverage and debt-servicing capacity.',
+                    metrics: ['Debt / Equity — total debt ÷ shareholders equity', 'Interest Coverage — EBIT ÷ interest expense'],
+                    note: 'Lower leverage and strong interest coverage mean the company can weather downturns without distress.',
                   },
                   {
                     title: 'Valuation',
-                    weight: '20%',
-                    inputs: ['P/E Ratio', 'P/B Ratio'],
-                    formula: 'avg(\n  max(100 − (PE − 15) × 2, 0),\n  max(100 − (PB − 3) × 8, 0)\n)',
-                    note: 'Anchored to P/E of 15 and P/B of 3 as "fair value". Lower multiples score higher; very high multiples approach 0.',
-                  },
-                  {
-                    title: 'Momentum',
                     weight: '15%',
-                    inputs: ['Current Price', '52-Week High', '52-Week Low'],
-                    formula: '(price − 52wLow)\n  ÷ (52wHigh − 52wLow)\n  × 100',
-                    note: 'Measures where the stock trades within its 52-week range. Near highs → strong momentum.',
+                    icon: <PieChart className="h-4 w-4 text-primary" />,
+                    desc: 'Simple market multiples relative to peers and history.',
+                    metrics: ['P/E Ratio — price ÷ earnings per share', 'P/B Ratio — price ÷ book value per share'],
+                    note: 'Lower multiples can suggest cheaper prices, but they must be read alongside quality and growth.',
                   },
                 ].map((p) => (
                   <Card key={p.title} className="glass-card">
                     <CardContent className="p-5 space-y-3">
                       <div className="flex items-center justify-between">
-                        <h4 className="font-semibold text-foreground">{p.title}</h4>
-                        <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">
-                          {p.weight}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground/60 mb-1">Inputs</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {p.inputs.map((inp) => (
-                            <span key={inp} className="text-xs bg-secondary/70 text-muted-foreground px-2 py-0.5 rounded">
-                              {inp}
-                            </span>
-                          ))}
+                        <div className="flex items-center gap-2">
+                          {p.icon}
+                          <h4 className="font-semibold text-foreground">{p.title}</h4>
                         </div>
+                        <span className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded">{p.weight}</span>
                       </div>
+                      <p className="text-sm text-muted-foreground">{p.desc}</p>
                       <div>
-                        <p className="text-xs text-muted-foreground/60 mb-1">Formula</p>
-                        <pre className="text-xs font-mono bg-secondary/50 rounded-lg p-3 whitespace-pre-wrap text-foreground/80 overflow-x-auto">
-                          {p.formula}
-                        </pre>
+                        <p className="text-xs text-muted-foreground/60 mb-1">Key metrics</p>
+                        <ul className="list-disc pl-4 text-xs text-muted-foreground space-y-1">
+                          {p.metrics.map((m) => (
+                            <li key={m}>{m}</li>
+                          ))}
+                        </ul>
                       </div>
                       <p className="text-xs text-muted-foreground/70">{p.note}</p>
                     </CardContent>
@@ -459,62 +484,85 @@ export default function CompanyPage() {
                 ))}
               </div>
 
-              {/* Aggregation, Grading, Confidence */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Card className="glass-card">
-                  <CardContent className="p-5 space-y-4">
-                    <h4 className="font-semibold text-foreground text-sm">Grading Scale</h4>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                      {[
-                        { range: '≥ 95', grade: 'A+', color: 'text-score-excellent' },
-                        { range: '≥ 90', grade: 'A', color: 'text-score-excellent' },
-                        { range: '≥ 85', grade: 'A-', color: 'text-score-good' },
-                        { range: '≥ 80', grade: 'B+', color: 'text-score-good' },
-                        { range: '≥ 75', grade: 'B', color: 'text-score-good' },
-                        { range: '≥ 70', grade: 'B-', color: 'text-score-good' },
-                        { range: '≥ 65', grade: 'C+', color: 'text-score-neutral' },
-                        { range: '≥ 60', grade: 'C', color: 'text-score-neutral' },
-                        { range: '≥ 55', grade: 'C-', color: 'text-score-neutral' },
-                        { range: '≥ 45', grade: 'D', color: 'text-score-poor' },
-                        { range: '< 45', grade: 'F', color: 'text-score-bad' },
-                      ].map((g) => (
-                        <div key={g.grade} className="flex items-center justify-between p-2 rounded bg-secondary/40">
-                          <span className={`font-bold font-mono text-sm ${g.color}`}>{g.grade}</span>
-                          <span className="text-xs text-muted-foreground font-mono">{g.range}</span>
-                        </div>
-                      ))}
+              {/* 4. DCF Lite */}
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Calculator className="h-4 w-4 text-primary" />
+                    DCF Lite — Basic Fair Value Estimate
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4 text-sm text-muted-foreground leading-relaxed">
+                  <p>
+                    DCF Lite estimates intrinsic value using a simplified discounted-cash-flow model. It is <strong>not</strong> a full institutional DCF — it uses a single starting free cash flow, a constant growth assumption, and a standard discount rate to produce a rough fair-value range.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground/60 font-semibold">Inputs</p>
+                      <ul className="list-disc pl-4 text-xs text-muted-foreground space-y-1">
+                        <li>Latest Free Cash Flow (reported, or Operating Cash Flow − Capex)</li>
+                        <li>5-year forecast horizon</li>
+                        <li>FCF growth rate assumption</li>
+                        <li>Discount rate (WACC proxy)</li>
+                        <li>Terminal growth rate</li>
+                        <li>Shares outstanding</li>
+                      </ul>
                     </div>
-                  </CardContent>
-                </Card>
-
-                <Card className="glass-card">
-                  <CardContent className="p-5 space-y-4">
-                    <h4 className="font-semibold text-foreground text-sm">Confidence Levels</h4>
-                    <div className="space-y-3 text-sm text-muted-foreground">
-                      <div>
-                        <p className="text-xs text-muted-foreground/60 mb-1">Determination formula</p>
-                        <pre className="text-xs font-mono bg-secondary/50 rounded-lg p-3 whitespace-pre-wrap text-foreground/80">
-{`metrics = [PE, ROE, revGrowth, grossMargin]
-available = count(non-null metrics)
-
-if available ≥ 3 → "high"
-else if PE exists → "medium"
-else → "low"`}
-                        </pre>
-                      </div>
-                      <div className="space-y-2 text-xs">
-                        <p><span className="text-score-excellent font-semibold">High:</span> ≥3 key metrics present — reliable composite score.</p>
-                        <p><span className="text-score-neutral font-semibold">Medium:</span> P/E available but other data gaps — directional score.</p>
-                        <p><span className="text-score-bad font-semibold">Low:</span> Minimal data — score should be treated with caution.</p>
-                      </div>
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground/60 font-semibold">Steps in plain English</p>
+                      <ol className="list-decimal pl-4 text-xs text-muted-foreground space-y-1">
+                        <li>Forecast future free cash flows for each year.</li>
+                        <li>Discount each year’s cash flow back to today.</li>
+                        <li>Estimate a terminal value beyond year 5.</li>
+                        <li>Discount the terminal value back to today.</li>
+                        <li>Add all discounted values to get enterprise value.</li>
+                        <li>Divide by shares outstanding for intrinsic value per share.</li>
+                      </ol>
                     </div>
+                  </div>
+                  <div className="p-3 rounded-lg bg-secondary/50 font-mono text-xs text-foreground/80 overflow-x-auto">
+                    projectedFCF_t = baseFCF × (1 + growthRate)^t<br />
+                    presentValue_t = projectedFCF_t ÷ (1 + discountRate)^t<br />
+                    terminalValue = projectedFCF_year5 × (1 + terminalGrowth) ÷ (discountRate − terminalGrowth)<br />
+                    pvTerminalValue = terminalValue ÷ (1 + discountRate)^5<br />
+                    enterpriseValue = Σ presentValue_t + pvTerminalValue<br />
+                    intrinsicValue = enterpriseValue ÷ sharesOutstanding
+                  </div>
+                  <p>
+                    A safety margin (±15% by default) is applied around the intrinsic value to create a fair-value range. If the current price sits inside that range, the stock is described as “within estimated fair value.” If it sits outside, it is described as “above” or “below.”
+                  </p>
+                </CardContent>
+              </Card>
 
-                    <h4 className="font-semibold text-foreground text-sm pt-2">Missing Data Handling</h4>
-                    <p className="text-xs text-muted-foreground">
-                      When a metric is <code className="bg-secondary/50 px-1 rounded">null</code>, it is excluded from its pillar's average. If <em>all</em> inputs for a pillar are null, a default score of 50 is used. This prevents missing data from artificially inflating or deflating scores.
-                    </p>
-                  </CardContent>
-                </Card>
+              {/* 5. Limitations */}
+              <Card className="glass-card">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-primary" />
+                    Limitations
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ul className="list-disc pl-5 text-sm text-muted-foreground space-y-2 leading-relaxed">
+                    <li>This is <strong>not</strong> a full institutional DCF. It uses a single starting FCF and constant growth, which is a simplification.</li>
+                    <li>Assumptions strongly affect the result. Small changes in growth or discount rate can move the fair value by large amounts.</li>
+                    <li>Yahoo Finance data may be incomplete, delayed, or missing for some symbols. Missing fields are excluded, but that reduces confidence.</li>
+                    <li>Some symbols may not have enough data to score or value at all.</li>
+                    <li>Phase 1 uses 3-year fundamentals where available, not a full 10-year history. This limits trend reliability.</li>
+                    <li>Scores and valuations are backward-looking based on reported financials. They do not capture future product launches, regulatory changes, or market sentiment shifts.</li>
+                  </ul>
+                </CardContent>
+              </Card>
+
+              {/* 6. Disclaimer */}
+              <div className="flex items-start gap-3 p-4 rounded-lg border border-border/30 bg-secondary/30">
+                <AlertCircle className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                <div className="text-sm text-muted-foreground leading-relaxed">
+                  <p className="font-medium text-foreground mb-1">Disclaimer</p>
+                  <p>
+                    This application is for educational and analytical purposes only. It does not provide investment advice, buy/sell recommendations, or financial planning guidance. Always do your own research and consult a qualified financial adviser before making investment decisions.
+                  </p>
+                </div>
               </div>
             </div>
           </TabsContent>
