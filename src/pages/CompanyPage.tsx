@@ -664,6 +664,16 @@ export default function CompanyPage() {
                         <span className="text-muted-foreground">Coverage</span>
                         <span className={`font-mono px-2 py-0.5 rounded border ${statusStyle}`}>{status}</span>
                       </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Data Quality</span>
+                        <span className={`font-mono px-2 py-0.5 rounded border ${qualityStyle}`}>{qualityLabel}</span>
+                      </div>
+                      {dh && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-muted-foreground">Completeness</span>
+                          <span className="font-mono text-foreground">{dh.completenessScore}%</span>
+                        </div>
+                      )}
                       {yearsUsed && (
                         <div className="flex items-center gap-2">
                           <span className="text-muted-foreground">Fundamentals years</span>
@@ -672,20 +682,31 @@ export default function CompanyPage() {
                           </span>
                         </div>
                       )}
-                      {missingFields.length > 0 && (
+                      {(dh?.missingFields.length ?? missingFields.length) > 0 && (
                         <div className="flex items-center gap-2">
                           <span className="text-muted-foreground">Missing fields</span>
-                          <span className="font-mono text-foreground">{missingFields.length}</span>
+                          <span className="font-mono text-foreground">{dh?.missingFields.length ?? missingFields.length}</span>
                         </div>
                       )}
                     </div>
 
-                    {missingFields.length > 0 && (
+                    {(dh?.missingFields.length ?? missingFields.length) > 0 && (
                       <p className="mt-3 text-[11px] text-muted-foreground/70 leading-relaxed">
-                        Not available: <span className="font-mono">{missingFields.slice(0, 8).join(', ')}</span>
-                        {missingFields.length > 8 ? `, +${missingFields.length - 8} more` : ''}.
+                        Not available: <span className="font-mono">{(dh?.missingFields ?? missingFields).slice(0, 10).join(', ')}</span>
+                        {((dh?.missingFields.length ?? missingFields.length) > 10) ? `, +${(dh?.missingFields.length ?? missingFields.length) - 10} more` : ''}.
                         {' '}Missing pillars are excluded and the overall score is renormalized across available pillars.
                       </p>
+                    )}
+
+                    {dh && dh.warnings.length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        <p className="text-[11px] font-semibold text-score-neutral flex items-center gap-1.5">
+                          <AlertCircle className="h-3 w-3" /> Data validation warnings
+                        </p>
+                        <ul className="list-disc pl-5 text-[11px] text-muted-foreground/80 space-y-1 leading-relaxed">
+                          {dh.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                        </ul>
+                      </div>
                     )}
                   </CardContent>
                 </Card>
