@@ -190,6 +190,7 @@ export default function CompanyPage() {
           <TabsList className="bg-secondary/50 border border-border/30 p-1 h-auto flex-wrap">
             <TabsTrigger value="overview" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Overview</TabsTrigger>
             <TabsTrigger value="fundamentals" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Fundamentals</TabsTrigger>
+            <TabsTrigger value="financials" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Financials</TabsTrigger>
             <TabsTrigger value="price" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Price</TabsTrigger>
             <TabsTrigger value="breakdown" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Score Breakdown</TabsTrigger>
             <TabsTrigger value="dcf" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">DCF Lite</TabsTrigger>
