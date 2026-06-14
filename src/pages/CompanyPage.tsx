@@ -154,6 +154,18 @@ export default function CompanyPage() {
             <div className="flex flex-col items-center gap-3">
               <ScoreGauge score={sc.overallScore} grade={sc.grade} />
               <ConfidenceBadge confidence={sc.confidence} />
+              {sc.dataHealth && (() => {
+                const q = sc.dataHealth.qualityLabel;
+                const cls =
+                  q === 'High' ? 'bg-score-excellent/10 text-score-excellent border-score-excellent/30'
+                  : q === 'Medium' ? 'bg-score-neutral/10 text-score-neutral border-score-neutral/30'
+                  : 'bg-score-bad/10 text-score-bad border-score-bad/30';
+                return (
+                  <span className={`text-[11px] font-mono px-2 py-1 rounded border ${cls}`}>
+                    Data Quality: {q}
+                  </span>
+                );
+              })()}
             </div>
           ) : score.isLoading ? (
             <div className="h-40 w-40 shimmer rounded-full" />
