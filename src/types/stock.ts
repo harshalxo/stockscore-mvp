@@ -71,6 +71,15 @@ export interface ScorePillar {
   details: string;
 }
 
+export interface DataHealth {
+  completenessScore: number;
+  missingFields: string[];
+  warnings: string[];
+  coverageLevel: 'Complete' | 'Partial' | 'Limited';
+  qualityLabel: 'High' | 'Medium' | 'Low';
+  yearsAvailable: number;
+}
+
 export interface StockScore {
   symbol: string;
   overallScore: number;
@@ -84,6 +93,7 @@ export interface StockScore {
   metricBreakdown?: unknown[];
   penalties?: unknown[];
   fetchedAt?: string;
+  dataHealth?: DataHealth;
 }
 
 

@@ -338,19 +338,85 @@ function weightedPillar(entries: MetricEntry[]): number | null {
   return scored.reduce((s, e) => s + (e.score as number) * (e.weight / totalW), 0);
 }
 
+// ── Phase 1 data validation layer ──────────────────────────────────────
+// Validates Yahoo fundamentals before scoring/DCF. Flags missing, suspicious,
+// and impossible values. Returns a structured DataHealth object the UI shows.
+type DataHealth = {
+  completenessScore: number;
+  missingFields: string[];
+  warnings: string[];
+  coverageLevel: 'Complete' | 'Partial' | 'Limited';
+  qualityLabel: 'High' | 'Medium' | 'Low';
+  yearsAvailable: number;
+};
+
+function computeDataHealth(fund: any, annual: any[], sector?: string): DataHealth {
+  const missing: string[] = [];
+  const warnings: string[] = [];
+
+  const reqFund: [string, any][] = [
+    ['peRatio', fund?.peRatio], ['pbRatio', fund?.pbRatio],
+    ['roe', fund?.roe], ['debtToEquity', fund?.debtToEquity],
+    ['currentRatio', fund?.currentRatio], ['grossMargin', fund?.grossMargin],
+    ['operatingMargin', fund?.operatingMargin], ['netMargin', fund?.netMargin],
+    ['freeCashFlow', fund?.freeCashFlow], ['revenue', fund?.revenue],
+    ['netIncome', fund?.netIncome], ['totalDebt', fund?.totalDebt],
+  ];
+  for (const [k, v] of reqFund) if (v == null) missing.push(k);
+
+  const latest = annual?.[0] ?? {};
+  const reqAnnual: [string, any][] = [
+    ['annual.revenue', latest.revenue], ['annual.ebit', latest.ebit],
+    ['annual.netIncome', latest.netIncome], ['annual.totalAssets', latest.totalAssets],
+    ['annual.totalEquity', latest.totalEquity], ['annual.totalDebt', latest.totalDebt],
+    ['annual.operatingCf', latest.operatingCf], ['annual.freeCf', latest.freeCf],
+  ];
+  for (const [k, v] of reqAnnual) if (v == null) missing.push(k);
+
+  if (latest.revenue != null && latest.revenue < 0) warnings.push('Revenue is negative — impossible for a normal operating company.');
+  if (latest.totalAssets != null && latest.totalAssets <= 0) warnings.push('Total Assets ≤ 0 — impossible value.');
+  if (latest.totalEquity != null && latest.totalEquity === 0) warnings.push('Total Equity is exactly 0 — ROE and D/E cannot be computed.');
+  if (latest.totalEquity != null && latest.totalEquity < 0) warnings.push('Total Equity is negative — book-value metrics are unreliable.');
+  const isFinancial = /financial|bank|insurance/i.test(sector || '');
+  if (!isFinancial && latest.interestExpense != null && latest.interestExpense === 0 && (latest.totalDebt ?? 0) > 0) {
+    warnings.push('Interest Expense reported as 0 despite debt outstanding — interest coverage may be misleading.');
+  }
+  if ((annual?.length ?? 0) < 2) warnings.push('Fewer than 2 years of fundamentals — CAGR cannot be computed.');
+  if (fund?.peRatio != null && fund.peRatio < 0) warnings.push('P/E is negative — company is unprofitable on a trailing basis.');
+
+  const totalRequired = reqFund.length + reqAnnual.length;
+  const present = totalRequired - missing.length;
+  const completenessScore = Math.round((present / totalRequired) * 100);
+
+  const yearsAvailable = annual?.length ?? 0;
+  let coverageLevel: DataHealth['coverageLevel'] = 'Complete';
+  if (completenessScore < 60 || yearsAvailable < 2) coverageLevel = 'Limited';
+  else if (completenessScore < 85 || missing.length > 0 || warnings.length > 0) coverageLevel = 'Partial';
+
+  let qualityLabel: DataHealth['qualityLabel'] = 'High';
+  if (coverageLevel === 'Limited') qualityLabel = 'Low';
+  else if (coverageLevel === 'Partial') qualityLabel = 'Medium';
+
+  return { completenessScore, missingFields: missing, warnings, coverageLevel, qualityLabel, yearsAvailable };
+}
+
 async function handleScore(symbol: string) {
   const [fund, s, q] = await Promise.all([
     handleFundamentals(symbol).catch(() => null),
-    safe('quoteSummary(score)', () => quoteSummary(symbol, ['price', 'summaryDetail'])),
+    safe('quoteSummary(score)', () => quoteSummary(symbol, ['price', 'summaryDetail', 'assetProfile'])),
     safe('quote(score)', () => quote(symbol)),
   ]);
 
   const price: any = s?.price ?? {};
+  const profile: any = s?.assetProfile ?? {};
   const Q: any = q ?? {};
   const f: any = fund || {};
   const annual: any[] = Array.isArray(f.annual) ? f.annual : [];
   const shortName = Q.longName || Q.shortName || price.shortName || symbol;
   const currency = Q.currency || price.currency || f.currency || 'USD';
+
+  const dataHealth = computeDataHealth(f, annual, profile.sector);
+  console.log(`[stock-data] score ${symbol} dataHealth: ${dataHealth.coverageLevel} completeness=${dataHealth.completenessScore} missing=${dataHealth.missingFields.length} warnings=${dataHealth.warnings.length}`);
 
   const latest = annual[0] ?? {};
   const oldest = annual[annual.length - 1] ?? {};
@@ -509,6 +575,7 @@ async function handleScore(symbol: string) {
     penalties,
     yearsUsed,
     currency,
+    dataHealth,
     summary: `${shortName} scores ${overall}/100 (${toGrade(overall)}) using ${annual.length}-year fundamentals (${confidence} confidence).`,
     lastUpdated: new Date().toISOString(),
     fetchedAt: new Date().toISOString(),
