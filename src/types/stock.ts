@@ -41,6 +41,22 @@ export interface Fundamentals {
   totalCash: number | null;
   beta: number | null;
   currency?: string;
+  annual?: AnnualFinancials[];
+}
+
+export interface AnnualFinancials {
+  year: number;
+  revenue: number | null;
+  ebit: number | null;
+  netIncome: number | null;
+  totalAssets: number | null;
+  totalEquity: number | null;
+  totalDebt: number | null;
+  cashAndEquiv: number | null;
+  operatingCf: number | null;
+  capex: number | null;
+  freeCf: number | null;
+  interestExpense: number | null;
 }
 
 export interface PriceData {
