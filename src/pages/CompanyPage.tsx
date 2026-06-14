@@ -288,6 +288,11 @@ export default function CompanyPage() {
             )}
           </TabsContent>
 
+          {/* Financial Statements Tab */}
+          <TabsContent value="financials">
+            <FinancialStatementsTab annual={fund?.annual} currency={currency} />
+          </TabsContent>
+
           {/* Price Tab */}
           <TabsContent value="price">
             {prices.isLoading ? (
