@@ -11,6 +11,7 @@ import PillarCard from '@/components/PillarCard';
 import ErrorState from '@/components/ErrorState';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import DcfLiteTab from '@/components/DcfLiteTab';
+import FinancialStatementsTab from '@/components/FinancialStatementsTab';
 import { useOverview, useFundamentals, usePrices, useScore } from '@/hooks/useStockData';
 import { getScoreColor, getCurrencySymbol, formatCurrency } from '@/types/stock';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
