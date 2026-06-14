@@ -609,14 +609,27 @@ export default function CompanyPage() {
             if (!sc) missingFields.push('score');
 
             const sectionsAvailable = [!!co, !!fund, !!pr, !!sc].filter(Boolean).length;
-            let status: 'Complete' | 'Partial' | 'Limited' = 'Complete';
-            if (sectionsAvailable <= 2 || missingFields.length >= 6) status = 'Limited';
-            else if (missingFields.length > 0) status = 'Partial';
+            const dh = sc?.dataHealth;
+            let status: 'Complete' | 'Partial' | 'Limited' =
+              dh?.coverageLevel ??
+              (sectionsAvailable <= 2 || missingFields.length >= 6
+                ? 'Limited'
+                : missingFields.length > 0
+                ? 'Partial'
+                : 'Complete');
 
             const statusStyle =
               status === 'Complete'
                 ? 'bg-score-excellent/10 text-score-excellent border-score-excellent/30'
                 : status === 'Partial'
+                ? 'bg-score-neutral/10 text-score-neutral border-score-neutral/30'
+                : 'bg-score-bad/10 text-score-bad border-score-bad/30';
+
+            const qualityLabel = dh?.qualityLabel ?? (status === 'Complete' ? 'High' : status === 'Partial' ? 'Medium' : 'Low');
+            const qualityStyle =
+              qualityLabel === 'High'
+                ? 'bg-score-excellent/10 text-score-excellent border-score-excellent/30'
+                : qualityLabel === 'Medium'
                 ? 'bg-score-neutral/10 text-score-neutral border-score-neutral/30'
                 : 'bg-score-bad/10 text-score-bad border-score-bad/30';
 
