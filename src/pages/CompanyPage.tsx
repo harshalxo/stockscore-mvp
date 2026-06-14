@@ -11,6 +11,7 @@ import PillarCard from '@/components/PillarCard';
 import ErrorState from '@/components/ErrorState';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import DcfLiteTab from '@/components/DcfLiteTab';
+import FinancialStatementsTab from '@/components/FinancialStatementsTab';
 import { useOverview, useFundamentals, usePrices, useScore } from '@/hooks/useStockData';
 import { getScoreColor, getCurrencySymbol, formatCurrency } from '@/types/stock';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
@@ -189,6 +190,7 @@ export default function CompanyPage() {
           <TabsList className="bg-secondary/50 border border-border/30 p-1 h-auto flex-wrap">
             <TabsTrigger value="overview" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Overview</TabsTrigger>
             <TabsTrigger value="fundamentals" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Fundamentals</TabsTrigger>
+            <TabsTrigger value="financials" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Financials</TabsTrigger>
             <TabsTrigger value="price" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Price</TabsTrigger>
             <TabsTrigger value="breakdown" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Score Breakdown</TabsTrigger>
             <TabsTrigger value="dcf" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">DCF Lite</TabsTrigger>
@@ -284,6 +286,11 @@ export default function CompanyPage() {
             ) : (
               <ErrorState message="Fundamentals data not available" />
             )}
+          </TabsContent>
+
+          {/* Financial Statements Tab */}
+          <TabsContent value="financials">
+            <FinancialStatementsTab annual={fund?.annual} currency={currency} />
           </TabsContent>
 
           {/* Price Tab */}
