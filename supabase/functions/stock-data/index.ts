@@ -575,6 +575,7 @@ async function handleScore(symbol: string) {
     penalties,
     yearsUsed,
     currency,
+    dataHealth,
     summary: `${shortName} scores ${overall}/100 (${toGrade(overall)}) using ${annual.length}-year fundamentals (${confidence} confidence).`,
     lastUpdated: new Date().toISOString(),
     fetchedAt: new Date().toISOString(),
