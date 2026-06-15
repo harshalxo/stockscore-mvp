@@ -395,6 +395,11 @@ export default function CompanyPage() {
             <DcfLiteTab symbol={ticker} />
           </TabsContent>
 
+          {/* Valuation Lab Tab */}
+          <TabsContent value="lab">
+            <ValuationLabTab symbol={ticker} />
+          </TabsContent>
+
           {/* Methodology Tab */}
           <TabsContent value="methodology">
             <div className="space-y-6">
