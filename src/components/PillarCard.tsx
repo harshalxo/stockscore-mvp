@@ -1,4 +1,6 @@
 import { motion } from 'framer-motion';
+import { Link, useParams } from 'react-router-dom';
+import { BookOpen } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { getScoreColor, getScoreBgColor } from '@/types/stock';
 import type { ScorePillar } from '@/types/stock';
@@ -8,9 +10,21 @@ interface PillarCardProps {
   index: number;
 }
 
+const PILLAR_TO_CATEGORY: Record<string, string> = {
+  quality: 'quality',
+  growth: 'growth',
+  'cash flow': 'cash-flow',
+  cashflow: 'cash-flow',
+  risk: 'risk',
+  valuation: 'valuation',
+};
+
 export default function PillarCard({ pillar, index }: PillarCardProps) {
   const colorClass = getScoreColor(pillar.score);
   const bgClass = getScoreBgColor(pillar.score);
+  const { symbol } = useParams<{ symbol: string }>();
+  const catSlug = PILLAR_TO_CATEGORY[pillar.name.toLowerCase()] || '';
+  const academyHref = `/academy${symbol ? `?symbol=${symbol}` : ''}${catSlug ? `#cat-${catSlug}` : ''}`;
 
   return (
     <motion.div
@@ -39,8 +53,15 @@ export default function PillarCard({ pillar, index }: PillarCardProps) {
             </div>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">{pillar.details}</p>
-          <div className="mt-2 text-xs text-muted-foreground/60">
-            Weight: {(pillar.weight * 100).toFixed(0)}%
+          <div className="mt-2 flex items-center justify-between text-xs">
+            <span className="text-muted-foreground/60">Weight: {(pillar.weight * 100).toFixed(0)}%</span>
+            <Link
+              to={academyHref}
+              className="inline-flex items-center gap-1 text-primary/80 hover:text-primary transition-colors"
+            >
+              <BookOpen className="h-3 w-3" />
+              Learn
+            </Link>
           </div>
         </CardContent>
       </Card>

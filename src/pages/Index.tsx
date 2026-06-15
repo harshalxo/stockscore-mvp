@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
-import { BarChart3 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { BarChart3, BookOpen } from 'lucide-react';
 import SearchBar from '@/components/SearchBar';
 import FeaturedCompanies from '@/components/FeaturedCompanies';
 
@@ -8,13 +9,20 @@ export default function Index() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b border-border/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
               <BarChart3 className="h-4.5 w-4.5 text-primary" />
             </div>
             <span className="text-lg font-bold text-gradient">StockScore</span>
           </div>
+          <Link
+            to="/academy"
+            className="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 transition-colors"
+          >
+            <BookOpen className="h-4 w-4" />
+            Academy
+          </Link>
         </div>
       </header>
 
