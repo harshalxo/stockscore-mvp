@@ -11,6 +11,7 @@ import PillarCard from '@/components/PillarCard';
 import ErrorState from '@/components/ErrorState';
 import { PageSkeleton } from '@/components/LoadingSkeleton';
 import DcfLiteTab from '@/components/DcfLiteTab';
+import ValuationLabTab from '@/components/ValuationLabTab';
 import FinancialStatementsTab from '@/components/FinancialStatementsTab';
 import { useOverview, useFundamentals, usePrices, useScore } from '@/hooks/useStockData';
 import { getScoreColor, getCurrencySymbol, formatCurrency } from '@/types/stock';
@@ -194,6 +195,7 @@ export default function CompanyPage() {
             <TabsTrigger value="price" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Price</TabsTrigger>
             <TabsTrigger value="breakdown" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Score Breakdown</TabsTrigger>
             <TabsTrigger value="dcf" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">DCF Lite</TabsTrigger>
+            <TabsTrigger value="lab" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Valuation Lab</TabsTrigger>
             <TabsTrigger value="methodology" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Methodology</TabsTrigger>
           </TabsList>
 
@@ -391,6 +393,11 @@ export default function CompanyPage() {
           {/* DCF Lite Tab */}
           <TabsContent value="dcf">
             <DcfLiteTab symbol={ticker} />
+          </TabsContent>
+
+          {/* Valuation Lab Tab */}
+          <TabsContent value="lab">
+            <ValuationLabTab symbol={ticker} />
           </TabsContent>
 
           {/* Methodology Tab */}
