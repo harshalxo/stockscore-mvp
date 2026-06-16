@@ -13,6 +13,7 @@ import { PageSkeleton } from '@/components/LoadingSkeleton';
 import DcfLiteTab from '@/components/DcfLiteTab';
 import ValuationLabTab from '@/components/ValuationLabTab';
 import FinancialStatementsTab from '@/components/FinancialStatementsTab';
+import ExecutionTab from '@/components/ExecutionTab';
 import { useOverview, useFundamentals, usePrices, useScore } from '@/hooks/useStockData';
 import { getScoreColor, getCurrencySymbol, formatCurrency } from '@/types/stock';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
@@ -196,6 +197,7 @@ export default function CompanyPage() {
             <TabsTrigger value="breakdown" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Score Breakdown</TabsTrigger>
             <TabsTrigger value="dcf" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">DCF Lite</TabsTrigger>
             <TabsTrigger value="lab" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Valuation Lab</TabsTrigger>
+            <TabsTrigger value="execution" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Execution</TabsTrigger>
             <TabsTrigger value="methodology" className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary">Methodology</TabsTrigger>
           </TabsList>
 
