@@ -402,6 +402,11 @@ export default function CompanyPage() {
             <ValuationLabTab symbol={ticker} />
           </TabsContent>
 
+          {/* Execution Tab */}
+          <TabsContent value="execution">
+            <ExecutionTab symbol={ticker} annual={fund?.annual} currency={currency} />
+          </TabsContent>
+
           {/* Methodology Tab */}
           <TabsContent value="methodology">
             <div className="space-y-6">
